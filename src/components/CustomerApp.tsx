@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { MapCanvas, Avatar, Star, Sheet, Toggle, Row, Route } from './shared-ui'
+import logo from '../assets/logo.jpeg'
 
 type Screen = 'splash' | 'phone' | 'otp' | 'home' | 'ride' | 'vehicle' | 'tracking' | 'complete' | 'package' | 'profile'
 
@@ -28,18 +29,15 @@ function PhoneFrame({ children }: { children: React.ReactNode }) {
 
 function SplashScreen({ onNext }: { onNext: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center" style={{height: 680, background: RED}}>
-      <div className="text-center">
-        <div className="w-20 h-20 bg-white/20 rounded-3xl flex items-center justify-center mx-auto mb-6">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" fill="white"/>
-            <path d="M7 12l3 3 7-7" stroke={RED} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+    <div className="flex flex-col items-center justify-center relative" style={{height: 680, background: RED}}>
+      <div className="text-center anim-fade">
+        <div className="w-24 h-24 bg-white rounded-[26px] p-1.5 mx-auto mb-6 shadow-[0_16px_44px_rgba(0,0,0,0.28)]">
+          <img src={logo} alt="Pickuptt" className="w-full h-full rounded-[20px] object-cover"/>
         </div>
-        <h1 className="text-4xl font-800 text-white mb-1 tracking-tight">Pickuptt</h1>
+        <h1 className="text-4xl font-800 text-white mb-1 tracking-[-0.03em]">Pickuptt</h1>
         <p className="text-white/70 text-sm">Your city, on demand</p>
       </div>
-      <button onClick={onNext} className="absolute bottom-12 left-6 right-6 bg-white text-[#E11D48] font-700 py-4 rounded-2xl text-base">
+      <button onClick={onNext} className="absolute bottom-12 left-6 right-6 bg-white text-[#E11D48] font-700 py-4 rounded-2xl text-base shadow-lg active:scale-[0.98] transition-transform">
         Get Started
       </button>
     </div>
@@ -146,8 +144,7 @@ function OTPScreen({ onNext, onBack }: { onNext: () => void; onBack: () => void 
 
 const SERVICES = [
   { icon: '🚗', label: 'Ride' },
-  { icon: '📦', label: 'Package' },
-  { icon: '🚛', label: 'Logistics' },
+  { icon: '📦', label: 'Package & Cargo' },
   { icon: '🔧', label: 'Towing' },
   { icon: '💊', label: 'Medi Boy' },
   { icon: '🏍️', label: 'Bike Taxi' },
@@ -156,11 +153,11 @@ const SERVICES = [
 
 function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPackage: () => void; onProfile: () => void }) {
   const [sheet, setSheet] = useState<null | 'schedule' | 'service' | 'all' | 'activity'>(null)
-  const [activeService, setActiveService] = useState('Logistics')
+  const [activeService, setActiveService] = useState('Towing')
   const [when, setWhen] = useState('Now')
 
   const suggestions = [
-    { icon: '🚛', label: 'Logistics' },
+    { icon: '🧹', label: 'Cleaning' },
     { icon: '🔧', label: 'Towing' },
     { icon: '💊', label: 'Medi Boy' },
     { icon: '🏍️', label: 'Bike' },
@@ -195,7 +192,7 @@ function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPa
             <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-gray-50 flex items-center justify-center text-gray-900 mb-2">
                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </div>
-            <span className="font-800 text-gray-900 text-lg tracking-tight">Package</span>
+            <span className="font-800 text-gray-900 text-lg tracking-tight">Package & Cargo</span>
           </button>
         </div>
 
@@ -308,7 +305,7 @@ function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPa
       {/* All services sheet */}
       <Sheet open={sheet === 'all'} onClose={() => setSheet(null)} title="All services">
         <div className="grid grid-cols-3 gap-3 mb-2">
-          {[{i:'🚗',l:'Ride'},{i:'📦',l:'Package'},{i:'🚛',l:'Logistics'},{i:'🔧',l:'Towing'},{i:'💊',l:'Medi Boy'},{i:'🏍️',l:'Bike Taxi'},{i:'🚑',l:'Ambulance'},{i:'🧹',l:'Cleaning'},{i:'🛠️',l:'Repairs'}].map(s => (
+          {[{i:'🚗',l:'Ride'},{i:'📦',l:'Package & Cargo'},{i:'🔧',l:'Towing'},{i:'💊',l:'Medi Boy'},{i:'🏍️',l:'Bike Taxi'},{i:'🚑',l:'Ambulance'},{i:'🧹',l:'Cleaning'},{i:'🛠️',l:'Repairs'},{i:'🧹',l:'Errands'}].map(s => (
             <button key={s.l} onClick={() => { setActiveService(s.l); setSheet('service') }}
               className="flex flex-col items-center gap-2 py-3 rounded-2xl bg-gray-50 hover:bg-gray-100 transition-colors">
               <span className="text-2xl">{s.i}</span>
@@ -1024,11 +1021,38 @@ const PACKAGE_CATS = [
   { key: 'other', label: 'Other', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/></svg> },
 ]
 
+const CARGO_TYPES = [
+  { key: 'pallets', label: 'Pallets', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="6" rx="1.5" stroke="currentColor" strokeWidth="2"/><rect x="3" y="14" width="18" height="6" rx="1.5" stroke="currentColor" strokeWidth="2"/></svg> },
+  { key: 'furniture', label: 'Furniture', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 11V7a2 2 0 012-2h12a2 2 0 012 2v4M2 11h20v6H2v-6zM6 17v2M18 17v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg> },
+  { key: 'materials', label: 'Materials', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 3l9 4.5-9 4.5-9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.5L12 21l9-4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg> },
+  { key: 'bulk', label: 'Bulk Goods', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 20V9l8-5 8 5v11M4 20h16M9 20v-6h6v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg> },
+  { key: 'machinery', label: 'Machinery', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="2"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1M18.7 18.7l-2.1-2.1M7.4 7.4L5.3 5.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg> },
+  { key: 'other', label: 'Other', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/></svg> },
+]
+
+const TRUCKS = [
+  { key: 'pickup', label: 'Pickup', sub: '1 t · light loads', lo: 850, hi: 1100, icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M1 16V9a1 1 0 011-1h10v8M12 10h4l3 4v2h-2M1 16h2m8 0h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><circle cx="6" cy="17.5" r="2" stroke="currentColor" strokeWidth="2"/><circle cx="16.5" cy="17.5" r="2" stroke="currentColor" strokeWidth="2"/></svg> },
+  { key: 'lorry', label: 'Lorry', sub: '3 t · pallets', lo: 1450, hi: 1900, icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M1 17V6a1 1 0 011-1h13v12M15 9h4l3 4v4h-2.5M1 17h2.5m9 0H15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><circle cx="6.5" cy="18" r="2" stroke="currentColor" strokeWidth="2"/><circle cx="17.5" cy="18" r="2" stroke="currentColor" strokeWidth="2"/></svg> },
+  { key: 'container', label: 'Container', sub: '10 t · freight', lo: 2600, hi: 3400, icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="2" y="6" width="20" height="10" rx="1.5" stroke="currentColor" strokeWidth="2"/><path d="M6 6v10M10 6v10M14 6v10M18 6v10" stroke="currentColor" strokeWidth="1.6"/><circle cx="7" cy="18.5" r="1.8" stroke="currentColor" strokeWidth="2"/><circle cx="17" cy="18.5" r="1.8" stroke="currentColor" strokeWidth="2"/></svg> },
+]
+
 function PackageScreen({ onBack }: { onBack: () => void }) {
+  const [mode, setMode] = useState<'parcel' | 'cargo'>('parcel')
   const [category, setCategory] = useState('food')
+  const [cargoType, setCargoType] = useState('pallets')
+  const [truck, setTruck] = useState<'pickup' | 'lorry' | 'container'>('lorry')
+  const [weight, setWeight] = useState(250)
+  const [helpers, setHelpers] = useState(false)
   const [sheet, setSheet] = useState<null | 'photo' | 'agent' | 'fare'>(null)
   const [searching, setSearching] = useState(false)
   const [photoAdded, setPhotoAdded] = useState(false)
+
+  const truckInfo = TRUCKS.find(t => t.key === truck)!
+  const weightExtra = Math.round(weight / 50) * 25
+  const helperExtra = helpers ? 180 : 0
+  const [fareLo, fareHi] = mode === 'parcel'
+    ? [250, 320]
+    : [truckInfo.lo + weightExtra + helperExtra, truckInfo.hi + weightExtra + helperExtra]
 
   const openAgent = () => {
     setSearching(true)
@@ -1042,10 +1066,19 @@ function PackageScreen({ onBack }: { onBack: () => void }) {
         <button onClick={onBack} className="w-9 h-9 bg-gray-50 rounded-2xl flex items-center justify-center">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="#111" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </button>
-        <h2 className="font-800 text-xl text-gray-900">Package Delivery</h2>
+        <h2 className="font-800 text-xl text-gray-900">Package & Cargo</h2>
       </div>
 
       <div className="flex-1 overflow-auto px-5 pb-4 space-y-4">
+        {/* Parcel / Cargo mode */}
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+          {(['parcel', 'cargo'] as const).map(m => (
+            <button key={m} onClick={() => setMode(m)}
+              className={`flex-1 py-2.5 rounded-lg text-xs font-700 transition-all ${mode === m ? 'bg-white text-gray-900 shadow' : 'text-gray-400'}`}>
+              {m === 'parcel' ? 'Parcel' : 'Cargo & Logistics'}
+            </button>
+          ))}
+        </div>
         {/* Route map */}
         <div className="relative h-36 rounded-2xl overflow-hidden ring-1 ring-black/5 shadow-sm">
           <MapCanvas />
@@ -1068,22 +1101,76 @@ function PackageScreen({ onBack }: { onBack: () => void }) {
           </div>
         </div>
 
-        <div>
-          <p className="text-xs font-700 text-gray-500 uppercase tracking-wider mb-2">Category</p>
-          <div className="grid grid-cols-3 gap-2">
-            {PACKAGE_CATS.map(c => (
-              <button key={c.key} onClick={() => setCategory(c.key)}
-                className={`py-3 rounded-xl flex flex-col items-center gap-1.5 border-2 transition-all ${category === c.key ? 'border-[#E11D48] bg-red-50 text-[#E11D48]' : 'border-gray-100 bg-gray-50 text-gray-500'}`}>
-                {c.icon}
-                <span className={`text-[10px] font-700 capitalize ${category===c.key?'text-[#E11D48]':'text-gray-500'}`}>{c.label}</span>
-              </button>
-            ))}
+        {mode === 'parcel' ? (
+          <div>
+            <p className="text-xs font-700 text-gray-500 uppercase tracking-wider mb-2">Category</p>
+            <div className="grid grid-cols-3 gap-2">
+              {PACKAGE_CATS.map(c => (
+                <button key={c.key} onClick={() => setCategory(c.key)}
+                  className={`py-3 rounded-xl flex flex-col items-center gap-1.5 border-2 transition-all ${category === c.key ? 'border-[#E11D48] bg-red-50 text-[#E11D48]' : 'border-gray-100 bg-gray-50 text-gray-500'}`}>
+                  {c.icon}
+                  <span className={`text-[10px] font-700 capitalize ${category===c.key?'text-[#E11D48]':'text-gray-500'}`}>{c.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : (
+          <>
+            <div>
+              <p className="text-xs font-700 text-gray-500 uppercase tracking-wider mb-2">Cargo type</p>
+              <div className="grid grid-cols-3 gap-2">
+                {CARGO_TYPES.map(c => (
+                  <button key={c.key} onClick={() => setCargoType(c.key)}
+                    className={`py-3 rounded-xl flex flex-col items-center gap-1.5 border-2 transition-all ${cargoType === c.key ? 'border-[#E11D48] bg-red-50 text-[#E11D48]' : 'border-gray-100 bg-gray-50 text-gray-500'}`}>
+                    {c.icon}
+                    <span className={`text-[10px] font-700 ${cargoType===c.key?'text-[#E11D48]':'text-gray-500'}`}>{c.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <p className="text-xs font-700 text-gray-500 uppercase tracking-wider">Load weight</p>
+                <span className="text-xs font-800 text-gray-900">{weight} kg</span>
+              </div>
+              <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-2.5">
+                <button onClick={() => setWeight(w => Math.max(10, w - 50))} className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center font-800 text-gray-900 active:scale-95 transition-transform">−</button>
+                <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, (weight / 2000) * 100)}%`, background: RED }}/>
+                </div>
+                <button onClick={() => setWeight(w => Math.min(2000, w + 50))} className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center font-800 text-gray-900 active:scale-95 transition-transform">+</button>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-700 text-gray-500 uppercase tracking-wider mb-2">Vehicle</p>
+              <div className="grid grid-cols-3 gap-2">
+                {TRUCKS.map(t => (
+                  <button key={t.key} onClick={() => setTruck(t.key as 'pickup' | 'lorry' | 'container')}
+                    className={`py-3 rounded-xl flex flex-col items-center gap-1 border-2 transition-all ${truck === t.key ? 'border-[#E11D48] bg-red-50 text-[#E11D48]' : 'border-gray-100 bg-gray-50 text-gray-500'}`}>
+                    {t.icon}
+                    <span className={`text-[10px] font-700 ${truck===t.key?'text-[#E11D48]':'text-gray-500'}`}>{t.label}</span>
+                    <span className="text-[8px] font-600 text-gray-400">{t.sub}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
+              <div className="flex-1">
+                <p className="text-sm font-700 text-gray-900">Add 2 loaders</p>
+                <p className="text-[11px] text-gray-400 font-500">Help with loading & unloading · +TT$ 180</p>
+              </div>
+              <Toggle on={helpers} onChange={setHelpers} />
+            </div>
+          </>
+        )}
 
         <div>
-          <p className="text-xs font-700 text-gray-500 uppercase tracking-wider mb-2">Package Details</p>
-          <textarea className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-700 outline-none resize-none placeholder-gray-300 font-500" rows={3} placeholder="Describe your package..."/>
+          <p className="text-xs font-700 text-gray-500 uppercase tracking-wider mb-2">{mode === 'parcel' ? 'Package Details' : 'Cargo Details'}</p>
+          <textarea className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-700 outline-none resize-none placeholder-gray-300 font-500" rows={3}
+            placeholder={mode === 'parcel' ? 'Describe your package…' : 'Describe the cargo, pickup access and unloading point…'}/>
         </div>
 
         <button onClick={() => setSheet('photo')} className={`w-full flex items-center gap-3 rounded-xl px-4 py-3 transition-colors ${photoAdded ? 'bg-green-50' : 'bg-gray-50 hover:bg-gray-100'}`}>
@@ -1097,7 +1184,7 @@ function PackageScreen({ onBack }: { onBack: () => void }) {
               Estimated fare
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#9CA3AF" strokeWidth="2"/><path d="M12 11v5M12 7.5v.5" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round"/></svg>
             </span>
-            <span className="font-800 text-gray-900 flex items-center gap-1">TT$ 250 – 320
+            <span className="font-800 text-gray-900 flex items-center gap-1">TT$ {fareLo.toLocaleString()} – {fareHi.toLocaleString()}
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#E11D48" strokeWidth="2.4" strokeLinecap="round"/></svg>
             </span>
           </div>
@@ -1106,7 +1193,7 @@ function PackageScreen({ onBack }: { onBack: () => void }) {
 
       <div className="px-5 pb-4">
         <button onClick={openAgent} className="w-full py-4 rounded-full font-700 text-base text-white shadow-[0_6px_18px_rgba(225,29,72,0.3)] active:scale-[0.98] transition-transform" style={{background: RED}}>
-          Find Agent Nearby
+          {mode === 'parcel' ? 'Find Courier Nearby' : 'Find Truck Nearby'}
         </button>
       </div>
 
@@ -1137,46 +1224,69 @@ function PackageScreen({ onBack }: { onBack: () => void }) {
       {/* Fare breakdown sheet */}
       <Sheet open={sheet === 'fare'} onClose={() => setSheet(null)} title="Fare estimate">
         <div className="bg-gray-50 rounded-2xl p-4 mb-4">
-          <Row label="Pickup → delivery · 4.6 km" right={<span className="text-sm font-700 text-gray-900">TT$ 180.00</span>} />
-          <Row label={`Handling · ${category}`} right={<span className="text-sm font-700 text-gray-900">TT$ 40.00</span>} />
-          <Row label="Service fee" right={<span className="text-sm font-700 text-gray-900">TT$ 30.00</span>} />
-          <Row label="Estimated total" right={<span className="text-sm font-800 text-gray-900">TT$ 250 – 320</span>} />
+          {mode === 'parcel' ? (
+            <>
+              <Row label="Pickup → delivery · 4.6 km" right={<span className="text-sm font-700 text-gray-900">TT$ 180.00</span>} />
+              <Row label={`Handling · ${category}`} right={<span className="text-sm font-700 text-gray-900">TT$ 40.00</span>} />
+              <Row label="Service fee" right={<span className="text-sm font-700 text-gray-900">TT$ 30.00</span>} />
+            </>
+          ) : (
+            <>
+              <Row label={`${truckInfo.label} · 4.6 km haul`} right={<span className="text-sm font-700 text-gray-900">TT$ {truckInfo.lo}.00 – {truckInfo.hi}.00</span>} />
+              <Row label={`Weight · ${weight} kg`} right={<span className="text-sm font-700 text-gray-900">TT$ {weightExtra}.00</span>} />
+              {helpers && <Row label="Loaders · 2" right={<span className="text-sm font-700 text-gray-900">TT$ 180.00</span>} />}
+              <Row label={`Cargo · ${cargoType}`} right={<span className="text-sm font-700 text-gray-900">TT$ 30.00</span>} />
+            </>
+          )}
+          <Row label="Estimated total" right={<span className="text-sm font-800 text-gray-900">TT$ {fareLo.toLocaleString()} – {fareHi.toLocaleString()}</span>} />
         </div>
-        <p className="text-xs text-gray-400 font-500 mb-4">Final price depends on package weight and waiting time. You’ll see the exact fare before an agent accepts.</p>
+        <p className="text-xs text-gray-400 font-500 mb-4">
+          {mode === 'parcel'
+            ? 'Final price depends on package weight and waiting time. You’ll see the exact fare before an agent accepts.'
+            : 'Final price depends on haul distance, load weight and loading time. The driver confirms the exact fare at pickup.'}
+        </p>
         <button onClick={() => setSheet(null)} className="w-full py-3.5 rounded-full font-700 text-sm text-white bg-[#111]">Got it</button>
       </Sheet>
 
       {/* Agent search sheet */}
-      <Sheet open={sheet === 'agent'} onClose={() => setSheet(null)} title={searching ? 'Finding an agent…' : 'Agent found'}>
+      <Sheet open={sheet === 'agent'} onClose={() => setSheet(null)}
+        title={searching ? (mode === 'parcel' ? 'Finding a courier…' : 'Finding a truck…') : (mode === 'parcel' ? 'Courier found' : 'Truck found')}>
         {searching ? (
           <div className="flex flex-col items-center py-6">
             <div className="w-12 h-12 rounded-full border-4 border-red-100 border-t-[#E11D48] animate-spin mb-4"/>
-            <p className="text-sm text-gray-500 font-500 text-center">Searching for delivery agents within 2 km of your pickup…</p>
+            <p className="text-sm text-gray-500 font-500 text-center">
+              Searching for {mode === 'parcel' ? 'delivery couriers' : 'trucks & drivers'} within 2 km of your pickup…
+            </p>
           </div>
         ) : (
           <>
             <div className="flex items-center gap-3 bg-gray-50 rounded-2xl p-4 mb-4">
-              <Avatar initials="RD" className="w-14 h-14 rounded-2xl text-base" />
+              <Avatar initials={mode === 'parcel' ? 'RD' : 'KB'} className="w-14 h-14 rounded-2xl text-base" />
               <div className="flex-1">
-                <p className="font-800 text-gray-900">Rajesh Deo</p>
-                <p className="text-xs text-gray-400 font-500">Bike courier · TDT 4471</p>
+                <p className="font-800 text-gray-900">{mode === 'parcel' ? 'Rajesh Deo' : 'Kwesi Boateng'}</p>
+                <p className="text-xs text-gray-400 font-500">
+                  {mode === 'parcel' ? 'Bike courier · TDT 4471' : `${truckInfo.label} driver · TDT 8892`}
+                </p>
                 <div className="flex items-center gap-1 mt-0.5">
                   <Star filled size={12} />
-                  <span className="text-xs font-600 text-gray-600">4.89 · 1,204 deliveries</span>
+                  <span className="text-xs font-600 text-gray-600">4.89 · {mode === 'parcel' ? '1,204 deliveries' : '632 hauls'}</span>
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-sm font-800 text-gray-900">4 min</p>
+                <p className="text-sm font-800 text-gray-900">{mode === 'parcel' ? '4 min' : '9 min'}</p>
                 <p className="text-[10px] text-gray-400 font-600">away</p>
               </div>
             </div>
             <div className="bg-gray-50 rounded-2xl p-4 mb-4">
-              <Row label="Pickup ETA" right={<span className="text-sm font-700 text-gray-900">Today · within 10 min</span>} />
-              <Row label="Delivery ETA" right={<span className="text-sm font-700 text-gray-900">Today · 18 min</span>} />
+              <Row label="Pickup ETA" right={<span className="text-sm font-700 text-gray-900">Today · within {mode === 'parcel' ? '10' : '20'} min</span>} />
+              <Row label="Delivery ETA" right={<span className="text-sm font-700 text-gray-900">Today · {mode === 'parcel' ? '18' : '45'} min</span>} />
+              {mode === 'cargo' && <Row label="Load" right={<span className="text-sm font-700 text-gray-900">{weight} kg · {cargoType}</span>} />}
             </div>
             <div className="flex gap-3">
               <button onClick={() => setSheet(null)} className="flex-1 py-3.5 rounded-full font-700 text-sm text-gray-600 bg-gray-100">Decline</button>
-              <button onClick={() => setSheet(null)} className="flex-1 py-3.5 rounded-full font-700 text-sm text-white bg-[#111]">Accept Rajesh</button>
+              <button onClick={() => setSheet(null)} className="flex-1 py-3.5 rounded-full font-700 text-sm text-white bg-[#111]">
+                Accept {mode === 'parcel' ? 'Rajesh' : 'Kwesi'}
+              </button>
             </div>
           </>
         )}
