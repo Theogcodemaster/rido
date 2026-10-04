@@ -6,7 +6,7 @@ import { POS_CENTER, carsAround, formatDistance, formatDuration, type Place } fr
 import { fetchRoute, pointAt, type RouteResult } from '../lib/route'
 import logo from '../assets/logo.jpeg'
 
-type Screen = 'splash' | 'phone' | 'otp' | 'home' | 'ride' | 'vehicle' | 'tracking' | 'complete' | 'package' | 'profile'
+type Screen = 'splash' | 'phone' | 'otp' | 'home' | 'ride' | 'vehicle' | 'tracking' | 'complete' | 'package' | 'profile' | 'service'
 
 const RED = '#E11D48'
 
@@ -162,6 +162,19 @@ const SERVICE_ICONS: Record<string, React.ReactNode> = {
 const SUGGESTIONS = ['Cleaning', 'Towing', 'Medi Boy', 'Bike']
 const ALL_SERVICES = ['Ride', 'Package & Cargo', 'Towing', 'Medi Boy', 'Bike Taxi', 'Ambulance', 'Cleaning', 'Repairs', 'Errands']
 
+const SERVICE_BASE: Record<string, number> = {
+  'Ride': 45,
+  'Package & Cargo': 250,
+  'Towing': 120,
+  'Medi Boy': 80,
+  'Bike Taxi': 30,
+  'Bike': 35,
+  'Ambulance': 200,
+  'Cleaning': 60,
+  'Repairs': 90,
+  'Errands': 70,
+}
+
 const SERVICE_BLURBS: Record<string, string> = {
   'Ride': 'Get a reliable ride in minutes. Upfront pricing, live tracking and 5-star rated drivers.',
   'Package & Cargo': 'Send parcels or book trucks anywhere in Trinidad. Upfront pricing, live tracking and insurance included.',
@@ -175,9 +188,8 @@ const SERVICE_BLURBS: Record<string, string> = {
   'Errands': 'Someone to line, shop and deliver for you. Pay only for the errand time you book.',
 }
 
-function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPackage: () => void; onProfile: () => void }) {
-  const [sheet, setSheet] = useState<null | 'schedule' | 'service' | 'all' | 'activity'>(null)
-  const [activeService, setActiveService] = useState('Towing')
+function HomeScreen({ onRide, onPackage, onProfile, onService }: { onRide: () => void; onPackage: () => void; onProfile: () => void; onService: (name: string) => void }) {
+  const [sheet, setSheet] = useState<null | 'schedule' | 'all' | 'activity'>(null)
   const [when, setWhen] = useState('Now')
 
   const suggestions = SUGGESTIONS.map(l => ({ label: l }))
@@ -241,7 +253,7 @@ function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPa
           </div>
           <div className="grid grid-cols-4 gap-4">
             {suggestions.map(s => (
-              <button key={s.label} onClick={() => { setActiveService(s.label); setSheet('service') }} className="flex flex-col items-center gap-2 group">
+              <button key={s.label} onClick={() => onService(s.label)} className="flex flex-col items-center gap-2 group">
                 <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-900 group-hover:bg-gray-900 group-hover:text-white transition-colors">
                   {SERVICE_ICONS[s.label]}
                 </div>
@@ -311,24 +323,16 @@ function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPa
         </div>
       </Sheet>
 
-      {/* Service sheet */}
-      <Sheet open={sheet === 'service'} onClose={() => setSheet(null)} title={activeService}>
-        <p className="text-sm text-gray-500 font-500 mb-4">{SERVICE_BLURBS[activeService] ?? 'Book a trusted provider near you. Upfront pricing, live tracking and insurance included.'}</p>
-        <div className="bg-gray-50 rounded-2xl p-4 mb-4">
-          <Row label="Starting from" right={<span className="text-sm font-800 text-gray-900">TT$ 60.00</span>} />
-          <Row label="Nearest provider" right={<span className="text-sm font-700 text-green-600">4 min away</span>} />
-        </div>
-        <div className="flex gap-3">
-          <button onClick={() => setSheet(null)} className="flex-1 py-3.5 rounded-full font-700 text-sm text-gray-600 bg-gray-100">Not now</button>
-          <button onClick={() => setSheet('all')} className="flex-1 py-3.5 rounded-full font-700 text-sm text-white bg-[#111]">See options</button>
-        </div>
-      </Sheet>
-
       {/* All services sheet */}
       <Sheet open={sheet === 'all'} onClose={() => setSheet(null)} title="All services">
         <div className="grid grid-cols-3 gap-3 mb-2">
           {ALL_SERVICES.map(l => (
-            <button key={l} onClick={() => { setActiveService(l); setSheet('service') }}
+            <button key={l} onClick={() => {
+              setSheet(null)
+              if (l === 'Ride') onRide()
+              else if (l === 'Package & Cargo') onPackage()
+              else onService(l)
+            }}
               className="flex flex-col items-center gap-2 py-3 rounded-2xl bg-gray-50 hover:bg-gray-100 transition-colors">
               <span className="text-gray-900">{SERVICE_ICONS[l]}</span>
               <span className="text-[11px] font-700 text-gray-700">{l}</span>
@@ -353,6 +357,137 @@ function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPa
             </div>
           ))}
         </div>
+      </Sheet>
+    </div>
+  )
+}
+
+const SERVICE_WHEN = ['Now', 'In 1 hour', 'Tomorrow']
+
+function ServiceScreen({ service, onBack }: { service: string; onBack: () => void }) {
+  const [when, setWhen] = useState('Now')
+  const [priority, setPriority] = useState(false)
+  const [route, setRoute] = useState<RouteResult | null>(null)
+  const [confirming, setConfirming] = useState(false)
+
+  useEffect(() => {
+    const ctrl = new AbortController()
+    fetchRoute(PKG_PICKUP, PKG_DEST, ctrl.signal).then(r => setRoute(r)).catch(() => {})
+    return () => ctrl.abort()
+  }, [])
+
+  const km = route ? route.distanceM / 1000 : 0
+  const base = SERVICE_BASE[service] ?? 60
+  const distanceFee = Math.max(6, Math.round(km * 4))
+  const total = base + distanceFee + (priority ? 40 : 0)
+  const blurb = SERVICE_BLURBS[service] ?? 'Book a trusted provider near you. Upfront pricing, live tracking and insurance included.'
+
+  return (
+    <div className="flex flex-col bg-white relative" style={{height: 680}}>
+      {/* Header */}
+      <div className="px-5 pt-4 pb-3 flex items-center gap-3 shrink-0">
+        <button onClick={onBack} className="w-9 h-9 rounded-full flex items-center justify-center transition-colors" style={{background: '#FDE7EC'}} aria-label="Back">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke={RED} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </button>
+        <div className="w-9 h-9 bg-red-50 border border-red-100 rounded-xl flex items-center justify-center" style={{color: RED}}>
+          {SERVICE_ICONS[service]}
+        </div>
+        <h2 className="font-800 text-xl text-gray-900 tracking-[-0.02em]">{service}</h2>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-5 pb-4 space-y-4">
+        {/* Map with real route */}
+        <div className="relative h-36 rounded-2xl overflow-hidden ring-1 ring-black/5 shadow-sm isolate">
+          <RideMapView pickup={PKG_PICKUP} dest={PKG_DEST} route={route?.coords ?? null} cars={carsAround(PKG_PICKUP, 3)} interactive={false} zoom={11} />
+          <div className="absolute bottom-2 left-2 z-[1100] flex items-center gap-1.5 bg-white/95 backdrop-blur rounded-full px-3 py-1.5 shadow-sm">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" stroke={RED} strokeWidth="2.2" strokeLinejoin="round"/></svg>
+            <span className="text-[11px] font-800 text-gray-900">
+              {route ? `${formatDistance(route.distanceM)} · ${formatDuration(route.durationS)}` : 'Calculating route…'}
+            </span>
+          </div>
+        </div>
+
+        {/* Blurb */}
+        <div className="bg-red-50 border-l-[3px] rounded-xl p-4" style={{borderColor: RED}}>
+          <p className="text-sm text-gray-600 font-500 leading-snug">{blurb}</p>
+        </div>
+
+        {/* Addresses */}
+        <div className="bg-gray-50 rounded-2xl p-4 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{background: RED, boxShadow: `0 0 0 4px rgba(225,29,72,0.15)`}} />
+            <div className="min-w-0">
+              <p className="text-[11px] font-700 text-gray-400 uppercase tracking-wider">Service address</p>
+              <p className="text-sm font-700 text-gray-900 truncate">{PKG_PICKUP.label}</p>
+            </div>
+          </div>
+          <div className="border-t border-gray-200" />
+          <div className="flex items-center gap-3">
+            <div className="w-2.5 h-2.5 rounded-sm shrink-0 bg-gray-900" />
+            <div className="min-w-0">
+              <p className="text-[11px] font-700 text-gray-400 uppercase tracking-wider">Destination</p>
+              <p className="text-sm font-700 text-gray-900 truncate">{PKG_DEST.label}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* When */}
+        <div>
+          <p className="text-xs font-700 text-gray-500 uppercase tracking-wider mb-2">When</p>
+          <div className="flex gap-2">
+            {SERVICE_WHEN.map(t => (
+              <button key={t} onClick={() => setWhen(t)}
+                className={`flex-1 py-2.5 rounded-full text-xs font-700 border-2 transition-all ${when === t ? 'border-[#E11D48] text-[#E11D48] bg-red-50' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}>
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Priority */}
+        <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3.5">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-700 text-gray-900">Priority matching</p>
+            <p className="text-[11px] text-gray-400 font-500">Get a provider faster · +TT$ 40</p>
+          </div>
+          <Toggle on={priority} onChange={setPriority} />
+        </div>
+
+        {/* Price estimate */}
+        <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+          <p className="text-xs font-700 text-gray-500 uppercase tracking-wider">Estimate</p>
+          <Row label={`Base · ${service}`} right={<span className="text-sm font-700 text-gray-900">TT$ {base.toFixed(2)}</span>} />
+          <Row label={`Distance · ${route ? formatDistance(route.distanceM) : '—'}`} right={<span className="text-sm font-700 text-gray-900">TT$ {distanceFee.toFixed(2)}</span>} />
+          <Row label="Priority matching" right={<span className="text-sm font-700 text-gray-900">{priority ? 'TT$ 40.00' : '—'}</span>} />
+          <div className="border-t border-gray-200" />
+          <Row label="Total" right={<span className="text-base font-800" style={{color: RED}}>TT$ {total.toFixed(2)}</span>} />
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="shrink-0 px-5 pt-3 pb-4 border-t border-gray-100 bg-white">
+        <button onClick={() => setConfirming(true)}
+          className="w-full py-4 rounded-full font-800 text-base text-white bg-[#111] hover:bg-black active:scale-[0.98] transition-all">
+          Book {service} · TT$ {total.toFixed(2)}
+        </button>
+      </div>
+
+      {/* Confirm sheet */}
+      <Sheet open={confirming} onClose={() => setConfirming(false)} title="Confirm booking">
+        <div className="bg-gray-50 rounded-2xl p-4 space-y-3 mb-4">
+          <Row label="Service" right={<span className="text-sm font-700 text-gray-900">{service}</span>} />
+          <Row label="When" right={<span className="text-sm font-700 text-gray-900">{when}</span>} />
+          <Row label="Route" right={<span className="text-sm font-700 text-gray-900">{route ? formatDistance(route.distanceM) : '—'}</span>} />
+          <Row label="Priority" right={<span className="text-sm font-700 text-gray-900">{priority ? 'On' : 'Off'}</span>} />
+          <div className="border-t border-gray-200" />
+          <Row label="Total" right={<span className="text-base font-800" style={{color: RED}}>TT$ {total.toFixed(2)}</span>} />
+        </div>
+        <button onClick={() => { setConfirming(false); onBack() }}
+          className="w-full py-4 rounded-full font-800 text-base text-white hover:opacity-90 transition-opacity"
+          style={{background: RED}}>
+          Confirm booking
+        </button>
       </Sheet>
     </div>
   )
@@ -1393,6 +1528,7 @@ function ProfileScreen({ onBack }: { onBack: () => void }) {
 
 export default function CustomerApp() {
   const [screen, setScreen] = useState<Screen>('splash')
+  const [activeService, setActiveService] = useState('Cleaning')
   const [pickup, setPickup] = useState<Place>(POS_CENTER)
   const [dest, setDest] = useState<Place | null>(null)
 
@@ -1412,13 +1548,14 @@ export default function CustomerApp() {
         {screen === 'splash' && <SplashScreen onNext={() => setScreen('phone')}/>}
         {screen === 'phone' && <PhoneScreen onNext={() => setScreen('otp')} onBack={() => setScreen('splash')}/>}
         {screen === 'otp' && <OTPScreen onNext={() => setScreen('home')} onBack={() => setScreen('phone')}/>}
-        {screen === 'home' && <HomeScreen onRide={() => setScreen('ride')} onPackage={() => setScreen('package')} onProfile={() => setScreen('profile')}/>}
+        {screen === 'home' && <HomeScreen onRide={() => setScreen('ride')} onPackage={() => setScreen('package')} onProfile={() => setScreen('profile')} onService={name => { setActiveService(name); setScreen('service') }}/>}
         {screen === 'ride' && <RideScreen onNext={() => setScreen('vehicle')} onBack={() => setScreen('home')} pickup={pickup} setPickup={setPickup} dest={dest} setDest={setDest}/>}
         {screen === 'vehicle' && <VehicleScreen onNext={() => setScreen('tracking')} onBack={() => setScreen('ride')} pickup={pickup} dest={dest}/>}
         {screen === 'tracking' && <TrackingScreen onNext={() => setScreen('complete')} onBack={() => setScreen('vehicle')} pickup={pickup}/>}
         {screen === 'complete' && <CompleteScreen onBack={() => setScreen('home')}/>}
         {screen === 'package' && <PackageScreen onBack={() => setScreen('home')}/>}
         {screen === 'profile' && <ProfileScreen onBack={() => setScreen('home')}/>}
+        {screen === 'service' && <ServiceScreen service={activeService} onBack={() => setScreen('home')}/>}
       </PhoneFrame>
     </div>
   )

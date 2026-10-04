@@ -217,7 +217,7 @@ export default function RideMapView({
                 opacity: 0.95,
                 dashArray: "0.5 14.5",
                 lineCap: "butt",
-                className: "rmvFlow",
+                className: "rmv-flow",
               }}
             />
           </>
