@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
 import { MapCanvas, Avatar, Star, Sheet, Toggle, Row, Route } from './shared-ui'
+import { RideScreen } from './RideScreen'
+import RideMapView from './RideMapView'
+import { POS_CENTER, carsAround, formatDistance, formatDuration, type Place } from '../lib/places'
+import { fetchRoute, pointAt, type RouteResult } from '../lib/route'
 import logo from '../assets/logo.jpeg'
 
 type Screen = 'splash' | 'phone' | 'otp' | 'home' | 'ride' | 'vehicle' | 'tracking' | 'complete' | 'package' | 'profile'
@@ -142,30 +146,45 @@ function OTPScreen({ onNext, onBack }: { onNext: () => void; onBack: () => void 
   )
 }
 
-const SERVICES = [
-  { icon: '🚗', label: 'Ride' },
-  { icon: '📦', label: 'Package & Cargo' },
-  { icon: '🔧', label: 'Towing' },
-  { icon: '💊', label: 'Medi Boy' },
-  { icon: '🏍️', label: 'Bike Taxi' },
-  { icon: '🚑', label: 'Ambulance' },
-]
+const SERVICE_ICONS: Record<string, React.ReactNode> = {
+  'Ride': <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M5 16h14M6.5 16l1.2-5h8.6L17.5 16M7 11l1.4-4h7.2L17 11"/><circle cx="7.2" cy="17.6" r="1.9"/><circle cx="16.8" cy="17.6" r="1.9"/></svg>,
+  'Package & Cargo': <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg>,
+  'Towing': <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M2 16V9a1 1 0 011-1h8v8M11 11h4l3 3.5V16h-1.5M2 16h1.5m7.5 0H11"/><circle cx="6" cy="17.6" r="1.9"/><circle cx="15.5" cy="17.6" r="1.9"/></svg>,
+  'Medi Boy': <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><rect x="2.5" y="8" width="19" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M9 9l6 6"/></svg>,
+  'Bike Taxi': <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="5.5" cy="17" r="2.6"/><circle cx="18.5" cy="17" r="2.6"/><path d="M8 15.5l3-5.5h4.2l2.3 3.4H19M11 10H8.6"/></svg>,
+  'Bike': <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="5.5" cy="17" r="2.6"/><circle cx="18.5" cy="17" r="2.6"/><path d="M8 15.5l3-5.5h4.2l2.3 3.4H19M11 10H8.6"/></svg>,
+  'Ambulance': <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M2 17V8h11v9M13 11h3.5l3.5 3.5V17h-1.8M2 17h1.6m7.4 0h4.6"/><circle cx="6.5" cy="17.6" r="1.9"/><circle cx="16.5" cy="17.6" r="1.9"/><path d="M7.5 10.5v3M6 12h3"/></svg>,
+  'Cleaning': <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M19 3l-7.5 7.5M12.5 4.5L19.5 11.5M4 20l3-6.5 6 3.5L4 20z"/></svg>,
+  'Repairs': <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>,
+  'Errands': <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8h12l1 12H5L6 8zM9 8V6a3 3 0 016 0v2"/></svg>,
+}
+
+const SUGGESTIONS = ['Cleaning', 'Towing', 'Medi Boy', 'Bike']
+const ALL_SERVICES = ['Ride', 'Package & Cargo', 'Towing', 'Medi Boy', 'Bike Taxi', 'Ambulance', 'Cleaning', 'Repairs', 'Errands']
+
+const SERVICE_BLURBS: Record<string, string> = {
+  'Ride': 'Get a reliable ride in minutes. Upfront pricing, live tracking and 5-star rated drivers.',
+  'Package & Cargo': 'Send parcels or book trucks anywhere in Trinidad. Upfront pricing, live tracking and insurance included.',
+  'Bike Taxi': 'Beat the traffic on two wheels — quick pickups across town with upfront pricing.',
+  'Bike': 'Beat the traffic on two wheels — quick pickups across town with upfront pricing.',
+  'Medi Boy': 'Trained medical riders for clinic runs, prescriptions and hospital transfers.',
+  'Ambulance': 'Emergency and non-emergency medical transport with certified attendants on call.',
+  'Towing': '24/7 roadside assistance and towing. Flatbeds available for cars, bikes and light trucks.',
+  'Cleaning': 'Vetted cleaners for homes and offices. Upfront pricing and supplies included.',
+  'Repairs': 'Verified technicians for plumbing, electrical and general repairs — same-day slots.',
+  'Errands': 'Someone to line, shop and deliver for you. Pay only for the errand time you book.',
+}
 
 function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPackage: () => void; onProfile: () => void }) {
   const [sheet, setSheet] = useState<null | 'schedule' | 'service' | 'all' | 'activity'>(null)
   const [activeService, setActiveService] = useState('Towing')
   const [when, setWhen] = useState('Now')
 
-  const suggestions = [
-    { icon: '🧹', label: 'Cleaning' },
-    { icon: '🔧', label: 'Towing' },
-    { icon: '💊', label: 'Medi Boy' },
-    { icon: '🏍️', label: 'Bike' },
-  ]
+  const suggestions = SUGGESTIONS.map(l => ({ label: l }))
 
   const activity = [
     { title: 'Ride to Piarco Int’l', meta: 'Sep 30 · 15 min', fare: 'TT$ 45.00', status: 'Completed' },
-    { title: 'Package to Kelaniya', meta: 'Sep 28 · 18 min', fare: 'TT$ 280.00', status: 'Completed' },
+    { title: 'Package to Chaguanas', meta: 'Sep 28 · 18 min', fare: 'TT$ 280.00', status: 'Completed' },
     { title: 'Ride to MovieTowne', meta: 'Sep 26 · 9 min', fare: 'TT$ 32.00', status: 'Cancelled' },
   ]
 
@@ -173,20 +192,23 @@ function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPa
     <div className="flex flex-col bg-white relative" style={{height: 680}}>
       {/* Header */}
       <div className="px-5 pt-4 pb-4 flex items-center justify-between">
-        <h2 className="text-3xl font-800 text-gray-900 tracking-tight">Pickuptt</h2>
-        <button onClick={onProfile} className="w-10 h-10 rounded-full overflow-hidden bg-gray-100 border border-gray-200 shadow-sm">
-          <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&h=80&fit=crop&auto=format" alt="profile" className="w-full h-full object-cover"/>
+        <div>
+          <h2 className="text-3xl font-800 text-gray-900 tracking-[-0.03em]">Pickuptt<span style={{color: RED}}>.</span></h2>
+          <p className="text-xs text-gray-400 font-500 mt-0.5">Good morning, Kamal · Port of Spain</p>
+        </div>
+        <button onClick={onProfile} className="w-10 h-10 rounded-full border border-gray-200 shadow-sm active:scale-95 transition-transform">
+          <Avatar initials="KP" className="w-full h-full rounded-full text-[11px]" />
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto pb-4">
         {/* Main Services */}
         <div className="px-5 mb-6 flex gap-3">
-          <button onClick={onRide} className="flex-1 bg-gray-50 border border-gray-100 rounded-3xl p-5 flex flex-col justify-between items-start h-32 hover:border-gray-300 hover:shadow-md transition-all">
-            <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-gray-50 flex items-center justify-center text-gray-900 mb-2">
+          <button onClick={onRide} className="flex-1 bg-red-50 border border-red-100 rounded-3xl p-5 flex flex-col justify-between items-start h-32 hover:border-red-200 hover:shadow-md transition-all">
+            <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-red-100 flex items-center justify-center mb-2" style={{color: RED}}>
                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg>
             </div>
-            <span className="font-800 text-gray-900 text-lg tracking-tight">Ride</span>
+            <span className="font-800 text-lg tracking-tight" style={{color: RED}}>Ride</span>
           </button>
           <button onClick={onPackage} className="flex-1 bg-gray-50 border border-gray-100 rounded-3xl p-5 flex flex-col justify-between items-start h-32 hover:border-gray-300 hover:shadow-md transition-all">
             <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-gray-50 flex items-center justify-center text-gray-900 mb-2">
@@ -199,13 +221,13 @@ function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPa
         {/* Where to? */}
         <div className="px-5 mb-6">
           <div className="bg-gray-100 rounded-full flex items-center px-5 py-4 gap-3 shadow-sm cursor-text" onClick={onRide}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="#111" strokeWidth="2.5" strokeLinecap="round"/></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke={RED} strokeWidth="2.5" strokeLinecap="round"/></svg>
             <span className="text-gray-900 font-700 text-lg flex-1">Where to?</span>
             <button
               onClick={e => { e.stopPropagation(); setSheet('schedule') }}
               className="bg-white rounded-full p-2 shadow-sm flex items-center gap-2"
             >
-               <span className="text-xs font-700 bg-gray-100 px-2 py-1 rounded-full text-gray-800">{when}</span>
+               <span className="text-xs font-700 px-2 py-1 rounded-full" style={{background: '#FDE7EC', color: RED}}>{when}</span>
                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#111" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </button>
           </div>
@@ -220,8 +242,8 @@ function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPa
           <div className="grid grid-cols-4 gap-4">
             {suggestions.map(s => (
               <button key={s.label} onClick={() => { setActiveService(s.label); setSheet('service') }} className="flex flex-col items-center gap-2 group">
-                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center text-2xl group-hover:bg-gray-200 transition-colors">
-                  {s.icon}
+                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-900 group-hover:bg-gray-900 group-hover:text-white transition-colors">
+                  {SERVICE_ICONS[s.label]}
                 </div>
                 <span className="text-[11px] font-600 text-gray-700">{s.label}</span>
               </button>
@@ -235,7 +257,7 @@ function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPa
            <div className="bg-gray-50 border border-gray-100 rounded-3xl p-4 space-y-4">
               <button onClick={onRide} className="w-full flex items-center gap-4 cursor-pointer group text-left">
                  <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm group-hover:shadow transition-all">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0112 2a8 8 0 018 8.2c0 7.3-8 11.8-8 11.8z" stroke="#111" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="10" r="3" stroke="#111" strokeWidth="2.5"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0112 2a8 8 0 018 8.2c0 7.3-8 11.8-8 11.8z" stroke={RED} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="10" r="3" stroke={RED} strokeWidth="2.5"/></svg>
                  </div>
                  <div className="flex-1 border-b border-gray-100 pb-4">
                     <h4 className="font-700 text-gray-900">Piarco International Airport</h4>
@@ -244,7 +266,7 @@ function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPa
               </button>
               <button onClick={onRide} className="w-full flex items-center gap-4 cursor-pointer group text-left">
                  <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm group-hover:shadow transition-all">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0112 2a8 8 0 018 8.2c0 7.3-8 11.8-8 11.8z" stroke="#111" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="10" r="3" stroke="#111" strokeWidth="2.5"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0112 2a8 8 0 018 8.2c0 7.3-8 11.8-8 11.8z" stroke={RED} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="10" r="3" stroke={RED} strokeWidth="2.5"/></svg>
                  </div>
                  <div className="flex-1">
                     <h4 className="font-700 text-gray-900">MovieTowne Port of Spain</h4>
@@ -258,9 +280,9 @@ function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPa
       {/* Bottom nav */}
       <div className="flex justify-around items-center px-6 py-4 border-t border-gray-100 bg-white">
         {[
-          {icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" stroke="#111" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>, label:'Home', active:true},
-          {icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="2" stroke="#ccc" strokeWidth="2.5"/><path d="M8 2v4M16 2v4M3 10h18" stroke="#ccc" strokeWidth="2.5" strokeLinecap="round"/></svg>, label:'Activity', active:false},
-          {icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#ccc" strokeWidth="2.5"/><path d="M12 8v4l3 3" stroke="#ccc" strokeWidth="2.5" strokeLinecap="round"/></svg>, label:'Account', active:false},
+          {icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" stroke={RED} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>, label:'Home', active:true},
+          {icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="2" stroke="#ccc" strokeWidth="2.5"/><path d="M8 2v4M16 2v4M3 10h18" stroke="#ccc" strokeWidth="2.5"/></svg>, label:'Activity', active:false},
+          {icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#ccc" strokeWidth="2.5"/><path d="M12 8v4l3 3" stroke="#ccc" strokeWidth="2.5"/></svg>, label:'Account', active:false},
         ].map(item => (
           <button
             key={item.label}
@@ -271,7 +293,7 @@ function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPa
             className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform"
           >
             {item.icon}
-            <span className={`text-[10px] font-700 ${item.active ? 'text-gray-900' : 'text-gray-400'}`}>{item.label}</span>
+            <span className={`text-[10px] font-700 ${item.active ? 'text-[#E11D48]' : 'text-gray-400'}`}>{item.label}</span>
           </button>
         ))}
       </div>
@@ -291,7 +313,7 @@ function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPa
 
       {/* Service sheet */}
       <Sheet open={sheet === 'service'} onClose={() => setSheet(null)} title={activeService}>
-        <p className="text-sm text-gray-500 font-500 mb-4">Book a {activeService.toLowerCase()} expert near you. Upfront pricing, live tracking and insurance included.</p>
+        <p className="text-sm text-gray-500 font-500 mb-4">{SERVICE_BLURBS[activeService] ?? 'Book a trusted provider near you. Upfront pricing, live tracking and insurance included.'}</p>
         <div className="bg-gray-50 rounded-2xl p-4 mb-4">
           <Row label="Starting from" right={<span className="text-sm font-800 text-gray-900">TT$ 60.00</span>} />
           <Row label="Nearest provider" right={<span className="text-sm font-700 text-green-600">4 min away</span>} />
@@ -305,11 +327,11 @@ function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPa
       {/* All services sheet */}
       <Sheet open={sheet === 'all'} onClose={() => setSheet(null)} title="All services">
         <div className="grid grid-cols-3 gap-3 mb-2">
-          {[{i:'🚗',l:'Ride'},{i:'📦',l:'Package & Cargo'},{i:'🔧',l:'Towing'},{i:'💊',l:'Medi Boy'},{i:'🏍️',l:'Bike Taxi'},{i:'🚑',l:'Ambulance'},{i:'🧹',l:'Cleaning'},{i:'🛠️',l:'Repairs'},{i:'🧹',l:'Errands'}].map(s => (
-            <button key={s.l} onClick={() => { setActiveService(s.l); setSheet('service') }}
+          {ALL_SERVICES.map(l => (
+            <button key={l} onClick={() => { setActiveService(l); setSheet('service') }}
               className="flex flex-col items-center gap-2 py-3 rounded-2xl bg-gray-50 hover:bg-gray-100 transition-colors">
-              <span className="text-2xl">{s.i}</span>
-              <span className="text-[11px] font-700 text-gray-700">{s.l}</span>
+              <span className="text-gray-900">{SERVICE_ICONS[l]}</span>
+              <span className="text-[11px] font-700 text-gray-700">{l}</span>
             </button>
           ))}
         </div>
@@ -331,263 +353,6 @@ function HomeScreen({ onRide, onPackage, onProfile }: { onRide: () => void; onPa
             </div>
           ))}
         </div>
-      </Sheet>
-    </div>
-  )
-}
-
-const SAVED_PLACES = [
-  { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 10.5L12 3l9 7.5V20a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 20v-9.5z" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round"/></svg>, label: 'Home', sub: '12 Walker St, Port of Spain' },
-  { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="18" height="13" rx="2.5" stroke="currentColor" strokeWidth="2.2"/><path d="M9 7V5.5A1.5 1.5 0 0110.5 4h3A1.5 1.5 0 0115 5.5V7M3 12.5h18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>, label: 'Work', sub: 'Level 3, Invaders Bay' },
-  { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 21s-7.5-4.4-7.5-11A7.5 7.5 0 0112 2.5 7.5 7.5 0 0119.5 10c0 6.6-7.5 11-7.5 11z" stroke="currentColor" strokeWidth="2.2"/><circle cx="12" cy="10" r="2.6" stroke="currentColor" strokeWidth="2.2"/></svg>, label: 'Piarco Int’l', sub: 'Golden Grove Rd' },
-  { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 3l2.4 5.1 5.6.8-4 4 .9 5.6-4.9-2.7-4.9 2.7.9-5.6-4-4 5.6-.8L12 3z" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round"/></svg>, label: 'MovieTowne', sub: 'Audrey Jeffers Hwy' },
-]
-
-function RideScreen({ onNext, onBack, pickup, setPickup, dest, setDest }: {
-  onNext: () => void; onBack: () => void
-  pickup: string; setPickup: (v: string) => void
-  dest: string; setDest: (v: string) => void
-}) {
-  const [timing, setTiming] = useState<'now' | 'later'>('now')
-  const [sheet, setSheet] = useState<null | 'schedule' | 'promo' | 'map' | 'search'>(null)
-  const [whenLabel, setWhenLabel] = useState('Leave now')
-  const [promo, setPromo] = useState('')
-  const [appliedPromo, setAppliedPromo] = useState<string | null>(null)
-  const [toast, setToast] = useState('')
-
-  const flash = (msg: string) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 1800)
-  }
-
-  return (
-    <div className="flex flex-col bg-white relative" style={{ height: 680 }}>
-      {/* Map */}
-      <div className="relative h-[46%] shrink-0">
-        <MapCanvas />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/15 via-transparent to-black/10" />
-
-        {/* route */}
-        <svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 375 320" preserveAspectRatio="xMidYMid slice" fill="none">
-          <Route d="M120 224C130 170 190 150 232 70" />
-        </svg>
-
-        <button
-          onClick={onBack}
-          className="absolute top-4 left-4 w-9 h-9 rounded-full bg-white/95 backdrop-blur-md shadow-[0_2px_10px_rgba(0,0,0,0.18)] flex items-center justify-center active:scale-95 transition-transform"
-        >
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="#111" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        </button>
-
-        {/* recenter */}
-        <button
-          onClick={() => flash('Map recentered on your location')}
-          className="absolute bottom-4 right-4 w-9 h-9 rounded-full bg-white shadow-[0_2px_10px_rgba(0,0,0,0.18)] flex items-center justify-center active:scale-95 transition-transform"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.4" fill="#111"/><circle cx="12" cy="12" r="7.4" stroke="#111" strokeWidth="2.2"/><path d="M12 1.5v3M12 19.5v3M22.5 12h-3M4.5 12h-3" stroke="#111" strokeWidth="2.2" strokeLinecap="round"/></svg>
-        </button>
-
-        {/* pickup pin + car */}
-        <div className="absolute" style={{ left: '32%', bottom: '30%' }}>
-          <div className="relative">
-            <div className="absolute inset-0 -m-3 rounded-full bg-white/25 animate-ping" />
-            <div className="relative w-4 h-4 rounded-full bg-[#111] ring-4 ring-white shadow-lg" />
-          </div>
-        </div>
-        <div className="absolute" style={{ left: '62%', top: '22%' }}>
-          <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="12" fill="rgba(255,255,255,0.9)" />
-            <path d="M4.5 10.5h15M8 15.5h1m4 0h1M5.5 19h13a2 2 0 002-2v-7a3 3 0 00-3-3H6.5a3 3 0 00-3 3v7a2 2 0 002 2z" stroke="#111" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
-
-        {toast && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs font-700 px-4 py-2 rounded-full shadow-lg anim-fade whitespace-nowrap">
-            {toast}
-          </div>
-        )}
-      </div>
-
-      {/* Floating search card */}
-      <div className="relative z-10 -mt-7 px-4">
-        <div className="bg-white rounded-2xl shadow-[0_6px_24px_rgba(0,0,0,0.10)] ring-1 ring-black/5 px-4 py-3.5">
-          <div className="relative flex gap-3 items-center">
-            <div className="flex flex-col items-center gap-1 pt-0.5 shrink-0">
-              <div className="w-2.5 h-2.5 rounded-full bg-[#111]" />
-              <div className="w-px flex-1 min-h-[18px] bg-gradient-to-b from-gray-300 to-gray-300" />
-              <div className="w-2.5 h-2.5 rounded-[3px] bg-[#111]" />
-            </div>
-            <div className="flex-1 space-y-2.5">
-              <input
-                value={pickup}
-                onChange={e => setPickup(e.target.value)}
-                className="w-full bg-transparent outline-none text-[15px] font-600 text-gray-900 placeholder-gray-400"
-                placeholder="Pickup location"
-              />
-              <input
-                value={dest}
-                onChange={e => setDest(e.target.value)}
-                onClick={() => !dest && setSheet('search')}
-                className="w-full bg-transparent outline-none text-[15px] font-600 text-gray-900 placeholder-gray-400"
-                placeholder="Where to?"
-              />
-            </div>
-            <button
-              onClick={() => setSheet('search')}
-              className="shrink-0 w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center active:scale-95 transition-transform"
-            >
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="#111" strokeWidth="2.4" strokeLinecap="round"/></svg>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Sheet */}
-      <div className="flex-1 flex flex-col px-5 pt-5 pb-5 overflow-hidden">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[26px] font-800 text-gray-900 tracking-[-0.02em] leading-none">Plan your ride</h2>
-          <button onClick={() => setSheet('map')} className="text-xs font-700 text-gray-500 flex items-center gap-1 hover:text-gray-900">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 21s-7.5-4.4-7.5-11A7.5 7.5 0 0112 2.5 7.5 7.5 0 0119.5 10c0 6.6-7.5 11-7.5 11z" stroke="currentColor" strokeWidth="2.4"/><circle cx="12" cy="10" r="2.6" stroke="currentColor" strokeWidth="2.4"/></svg>
-            Map
-          </button>
-        </div>
-
-        {/* Timing toggle */}
-        <div className="flex bg-gray-100 rounded-xl p-1 mb-5">
-          {([
-            { key: 'now', label: 'Leave now', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 7.5V12l3 2m6-2.5a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round"/></svg> },
-            { key: 'later', label: 'Schedule', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5" width="17" height="15.5" rx="3" stroke="currentColor" strokeWidth="2.3"/><path d="M8 2.5V6M16 2.5V6M3.5 10.5h17" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round"/></svg> },
-          ] as const).map(t => (
-            <button
-              key={t.key}
-              onClick={() => {
-                if (t.key === 'later') setSheet('schedule')
-                else { setTiming('now'); setWhenLabel('Leave now') }
-              }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[13px] font-700 transition-all ${
-                timing === t.key ? 'bg-white text-gray-900 shadow-[0_1px_3px_rgba(0,0,0,0.12)]' : 'text-gray-500'
-              }`}
-            >
-              {t.icon}
-              {t.label}
-            </button>
-          ))}
-        </div>
-        {timing === 'later' && (
-          <button onClick={() => setSheet('schedule')} className="-mt-3 mb-4 text-xs font-700 text-[#E11D48] text-left anim-fade">
-            Scheduled for {whenLabel} · change
-          </button>
-        )}
-
-        {/* Saved places */}
-        <div className="grid grid-cols-2 gap-2.5 mb-4">
-          {SAVED_PLACES.map(p => (
-            <button key={p.label} onClick={() => { setDest(p.sub); flash(`Destination set to ${p.label}`) }}
-              className="group flex items-center gap-2.5 bg-gray-50 hover:bg-gray-100 rounded-xl px-3 py-2.5 text-left transition-colors">
-              <div className="w-7 h-7 rounded-lg bg-white shadow-sm ring-1 ring-black/5 flex items-center justify-center text-gray-700 shrink-0">
-                {p.icon}
-              </div>
-              <div className="min-w-0">
-                <p className="text-[13px] font-700 text-gray-900 leading-tight truncate">{p.label}</p>
-                <p className="text-[10px] font-500 text-gray-400 truncate">{p.sub}</p>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        {/* Promo */}
-        <button onClick={() => setSheet('promo')} className="flex items-center gap-2.5 border border-dashed border-gray-200 rounded-xl px-3 py-2.5 mb-auto text-left hover:border-[#E11D48]/50 transition-colors">
-          <div className="w-7 h-7 rounded-lg bg-[#E11D48]/10 flex items-center justify-center shrink-0">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 12v8a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 20v-8M2 8.5V4h20v4.5a2.5 2.5 0 000 5V18H2v-4.5a2.5 2.5 0 000-5z" stroke="#E11D48" strokeWidth="2.2" strokeLinejoin="round"/></svg>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-700 text-gray-900 leading-tight">{appliedPromo ? `${appliedPromo} applied` : 'Add promo code'}</p>
-            <p className="text-[10px] font-500 text-gray-400">{appliedPromo ? 'Tap to change' : '2 offers available'}</p>
-          </div>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#ccc" strokeWidth="2.4" strokeLinecap="round"/></svg>
-        </button>
-
-        <button
-          onClick={onNext}
-          className="mt-4 w-full py-4 rounded-full bg-[#111] text-white text-[15px] font-700 tracking-tight active:scale-[0.98] transition-transform shadow-[0_6px_20px_rgba(0,0,0,0.22)] flex items-center justify-center gap-2"
-        >
-          Choose Vehicle
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        </button>
-      </div>
-
-      {/* Schedule sheet */}
-      <Sheet open={sheet === 'schedule'} onClose={() => setSheet(null)} title="Schedule your ride">
-        <div className="space-y-2 mb-4">
-          {['Leave now', 'In 15 minutes', 'In 30 minutes', 'In 1 hour', 'Tomorrow · 8:00 AM'].map(t => (
-            <button key={t} onClick={() => { setWhenLabel(t); setTiming(t === 'Leave now' ? 'now' : 'later'); setSheet(null) }}
-              className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border-2 transition-all ${whenLabel === t ? 'border-[#111] bg-gray-50' : 'border-gray-100 hover:bg-gray-50'}`}>
-              <span className="text-sm font-700 text-gray-900">{t}</span>
-              {whenLabel === t && <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 7" stroke="#111" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-            </button>
-          ))}
-        </div>
-      </Sheet>
-
-      {/* Promo sheet */}
-      <Sheet open={sheet === 'promo'} onClose={() => setSheet(null)} title="Promo codes">
-        <div className="space-y-2.5 mb-4">
-          {[{ code: 'WELCOME20', desc: '20% off your next ride', exp: 'Expires Oct 31' }, { code: 'AIRPORT10', desc: 'TT$ 10 off airport trips', exp: 'Expires Nov 15' }].map(o => (
-            <button key={o.code} onClick={() => { setPromo(o.code) }}
-              className={`w-full flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all text-left ${promo === o.code ? 'border-[#E11D48] bg-red-50' : 'border-gray-100 hover:bg-gray-50'}`}>
-              <div className="w-9 h-9 rounded-lg bg-[#E11D48]/10 flex items-center justify-center shrink-0">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 12v8a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 20v-8M2 8.5V4h20v4.5a2.5 2.5 0 000 5V18H2v-4.5a2.5 2.5 0 000-5z" stroke="#E11D48" strokeWidth="2.2" strokeLinejoin="round"/></svg>
-              </div>
-              <div className="flex-1">
-                <p className="font-800 text-sm text-gray-900">{o.code}</p>
-                <p className="text-xs text-gray-500 font-500">{o.desc} · {o.exp}</p>
-              </div>
-            </button>
-          ))}
-          <div className="flex gap-2 pt-1">
-            <input value={promo} onChange={e => setPromo(e.target.value.toUpperCase())} placeholder="Enter code"
-              className="flex-1 bg-gray-50 rounded-xl px-4 py-3 text-sm font-600 outline-none uppercase placeholder-gray-300 placeholder:normal-case border-2 border-transparent focus:border-gray-300"/>
-            <button onClick={() => { if (promo) { setAppliedPromo(promo); setSheet(null) } }}
-              className="px-5 rounded-xl font-700 text-sm text-white bg-[#111]">Apply</button>
-          </div>
-        </div>
-      </Sheet>
-
-      {/* Map sheet */}
-      <Sheet open={sheet === 'map'} onClose={() => setSheet(null)} title="Route preview">
-        <div className="relative h-56 rounded-2xl overflow-hidden ring-1 ring-black/5 mb-4">
-          <MapCanvas />
-          <svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 335 224" fill="none">
-            <Route d="M60 175C110 140 170 130 260 55" />
-            <circle cx="60" cy="175" r="7" fill="#111" stroke="#fff" strokeWidth="3" />
-            <circle cx="260" cy="55" r="7" fill="#E11D48" stroke="#fff" strokeWidth="3" />
-          </svg>
-        </div>
-        <div className="bg-gray-50 rounded-2xl p-4">
-          <Row label="Distance" right={<span className="text-sm font-700 text-gray-900">3.2 km</span>} />
-          <Row label="Est. time" right={<span className="text-sm font-700 text-gray-900">12 min</span>} />
-          <Row label="Traffic" right={<span className="text-sm font-700 text-green-600">Light</span>} />
-        </div>
-        <button onClick={() => setSheet(null)} className="mt-4 w-full py-3.5 rounded-full font-700 text-sm text-white bg-[#111]">Done</button>
-      </Sheet>
-
-      {/* Search sheet */}
-      <Sheet open={sheet === 'search'} onClose={() => setSheet(null)} title="Choose destination">
-        <input autoFocus value={dest} onChange={e => setDest(e.target.value)} placeholder="Where to?"
-          className="w-full bg-gray-50 rounded-xl px-4 py-3.5 text-[15px] font-600 outline-none placeholder-gray-400 mb-4 border-2 border-transparent focus:border-gray-300"/>
-        <p className="text-xs font-700 text-gray-400 uppercase tracking-wider mb-2">Recent</p>
-        <div className="space-y-1 mb-4">
-          {['Piarco International Airport', 'MovieTowne Port of Spain', 'Queen’s Park Savannah', 'Hyatt Regency'].map(p => (
-            <button key={p} onClick={() => { setDest(p); setSheet(null) }}
-              className="w-full flex items-center gap-3 px-2 py-3 rounded-xl hover:bg-gray-50 text-left">
-              <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0112 2a8 8 0 018 8.2c0 7.3-8 11.8-8 11.8z" stroke="#111" strokeWidth="2.4"/><circle cx="12" cy="10" r="2.6" stroke="#111" strokeWidth="2.4"/></svg>
-              </div>
-              <span className="text-sm font-600 text-gray-800">{p}</span>
-            </button>
-          ))}
-        </div>
-        <button onClick={() => setSheet(null)} className="w-full py-3.5 rounded-full font-700 text-sm text-white bg-[#111]">Confirm destination</button>
       </Sheet>
     </div>
   )
@@ -630,26 +395,59 @@ function VehicleGlyph({ kind }: { kind: string }) {
   )
 }
 
-function VehicleScreen({ onNext, onBack, pickup, dest }: { onNext: () => void; onBack: () => void; pickup: string; dest: string }) {
+function VehicleScreen({ onNext, onBack, pickup, dest }: { onNext: () => void; onBack: () => void; pickup: Place; dest: Place | null }) {
   const [selected, setSelected] = useState('Pickuptt X')
   const [sheet, setSheet] = useState<null | 'payment' | 'details' | 'confirm'>(null)
   const [payment, setPayment] = useState('Card ···· 4242')
+  const [route, setRoute] = useState<RouteResult | null>(null)
+
+  useEffect(() => {
+    if (!dest) {
+      setRoute(null)
+      return
+    }
+    const ctrl = new AbortController()
+    fetchRoute(pickup, dest, ctrl.signal)
+      .then(r => setRoute(r))
+      .catch(() => {})
+    return () => ctrl.abort()
+  }, [pickup, dest])
+
+  const km = route ? route.distanceM / 1000 : 3.2
+  const mins = route ? route.durationS / 60 : 12
+  const fareX = 18 + 6 * km + 0.65 * mins
+  const RATES: Record<string, number> = { 'Pickuptt X': 1, 'Pickuptt Comfort': 65 / 45, 'Pickuptt XL': 85 / 45 }
+  const priceOf = (type: string) => `TT$ ${(fareX * (RATES[type] ?? 1)).toFixed(2)}`
+  const statsLabel = route ? `${formatDistance(route.distanceM)} · ${formatDuration(route.durationS)}` : null
 
   const selectedVehicle = VEHICLES.find(v => v.type === selected)!
 
   return (
     <div className="flex flex-col bg-white relative" style={{height: 680}}>
-      <div className="relative h-44">
-        <MapCanvas />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/15 via-transparent to-black/5" />
-        <svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 375 176" fill="none">
-          <Route d="M90 140C130 110 210 120 250 60" />
-          <circle cx="90" cy="140" r="7" fill="#111" stroke="#fff" strokeWidth="3" />
-          <circle cx="250" cy="60" r="7" fill="#E11D48" stroke="#fff" strokeWidth="3" />
-        </svg>
-        <button onClick={onBack} className="absolute top-4 left-4 w-9 h-9 rounded-full bg-white/95 shadow-[0_2px_10px_rgba(0,0,0,0.18)] flex items-center justify-center active:scale-95 transition-transform">
+      <div className="relative h-44 isolate">
+        <RideMapView
+          pickup={pickup}
+          dest={dest}
+          route={route?.coords ?? null}
+          cars={carsAround(pickup)}
+          interactive={false}
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/5 pointer-events-none" />
+        <button onClick={onBack} className="absolute top-4 left-4 w-9 h-9 rounded-full bg-white/95 shadow-[0_2px_10px_rgba(0,0,0,0.18)] flex items-center justify-center active:scale-95 transition-transform z-[1100]">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="#111" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </button>
+        <div className="absolute bottom-8 left-4 z-[1100]">
+          {statsLabel ? (
+            <div className="bg-white/95 backdrop-blur-md rounded-full px-3 py-1.5 shadow-[0_2px_10px_rgba(0,0,0,0.18)] anim-fade">
+              <span className="text-[11px] font-bold text-gray-900">{statsLabel}</span>
+              {route?.fallback && <span className="text-[11px] font-semibold text-gray-400"> · approx.</span>}
+            </div>
+          ) : dest ? (
+            <div className="bg-white/95 backdrop-blur-md rounded-full px-3 py-1.5 shadow-[0_2px_10px_rgba(0,0,0,0.18)]">
+              <span className="text-[11px] font-bold text-gray-500 animate-pulse">Calculating route…</span>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div className="relative z-10 flex-1 bg-white rounded-t-3xl -mt-6 px-5 pt-5 pb-6 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] flex flex-col">
@@ -678,7 +476,7 @@ function VehicleScreen({ onNext, onBack, pickup, dest }: { onNext: () => void; o
                         {v.cap}
                      </div>
                   </div>
-                  <span className="font-800 text-base text-gray-900">{v.price}</span>
+                  <span className="font-800 text-base text-gray-900">{priceOf(v.type)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-500 text-gray-500">{v.desc}</span>
@@ -724,10 +522,10 @@ function VehicleScreen({ onNext, onBack, pickup, dest }: { onNext: () => void; o
       <Sheet open={sheet === 'details'} onClose={() => setSheet(null)} title="Fare breakdown">
         <div className="bg-gray-50 rounded-2xl p-4 mb-4">
           <Row label="Base fare" right={<span className="text-sm font-700 text-gray-900">TT$ 18.00</span>} />
-          <Row label="Distance · 3.2 km" right={<span className="text-sm font-700 text-gray-900">TT$ 19.20</span>} />
-          <Row label="Time · 12 min" right={<span className="text-sm font-700 text-gray-900">TT$ 7.80</span>} />
+          <Row label={`Distance · ${formatDistance(route?.distanceM ?? 3200)}`} right={<span className="text-sm font-700 text-gray-900">TT$ {(6 * km).toFixed(2)}</span>} />
+          <Row label={`Time · ${formatDuration(route?.durationS ?? 720)}`} right={<span className="text-sm font-700 text-gray-900">TT$ {(0.65 * mins).toFixed(2)}</span>} />
           <Row label="Booking fee" right={<span className="text-sm font-700 text-gray-900">TT$ 0.00</span>} />
-          <Row label="Total" right={<span className="text-sm font-800 text-gray-900">{selectedVehicle.price}</span>} />
+          <Row label="Total" right={<span className="text-sm font-800 text-gray-900">{priceOf(selected)}</span>} />
         </div>
         <p className="text-xs text-gray-400 font-500 mb-4">Price may change if the route or wait time changes.</p>
         <button onClick={() => setSheet(null)} className="w-full py-3.5 rounded-full font-700 text-sm text-white bg-[#111]">Close</button>
@@ -738,8 +536,8 @@ function VehicleScreen({ onNext, onBack, pickup, dest }: { onNext: () => void; o
         <div className="bg-gray-50 rounded-2xl p-4 mb-4">
           <Row label={selectedVehicle.type} sub={selectedVehicle.desc} right={<span className="text-sm font-800 text-gray-900">{selectedVehicle.price}</span>} />
           <Row label="Payment" sub={payment} right={<button onClick={() => setSheet('payment')} className="text-xs font-700 text-[#E11D48]">Change</button>} />
-          <Row label="Pickup" sub={pickup || 'Current location'} />
-          <Row label="Destination" sub={dest || 'Piarco Airport'} />
+          <Row label="Pickup" sub={pickup.label} />
+          <Row label="Destination" sub={dest?.label ?? 'Piarco Airport'} />
         </div>
         <div className="flex gap-3">
           <button onClick={() => setSheet(null)} className="flex-1 py-3.5 rounded-full font-700 text-sm text-gray-600 bg-gray-100">Back</button>
@@ -752,13 +550,43 @@ function VehicleScreen({ onNext, onBack, pickup, dest }: { onNext: () => void; o
   )
 }
 
-function TrackingScreen({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
+function TrackingScreen({ onNext, onBack, pickup }: { onNext: () => void; onBack: () => void; pickup: Place }) {
   const [sheet, setSheet] = useState<null | 'sos' | 'call' | 'chat' | 'cancel' | 'driver'>(null)
   const [messages, setMessages] = useState([
     { me: false, text: 'Hi, I’m 2 minutes away at the main entrance.' },
   ])
   const [draft, setDraft] = useState('')
   const [sosSent, setSosSent] = useState(false)
+  const [driverRoute, setDriverRoute] = useState<RouteResult | null>(null)
+  const [progress, setProgress] = useState(0)
+
+  // Driver starts ~1.2 km out and drives to the pickup point (real OSRM route).
+  const driverStart: Place = { ...pickup, id: 'driver', label: 'Driver', lat: pickup.lat + 0.011, lng: pickup.lng - 0.009 }
+
+  useEffect(() => {
+    const ctrl = new AbortController()
+    fetchRoute(driverStart, pickup, ctrl.signal)
+      .then(r => setDriverRoute(r))
+      .catch(() => {})
+    return () => ctrl.abort()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickup])
+
+  // Advance the car along the route; full approach takes ~28s of wall time.
+  useEffect(() => {
+    if (!driverRoute) return
+    const id = setInterval(() => {
+      setProgress(p => Math.min(0.97, p + 0.5 / 28))
+    }, 500)
+    return () => clearInterval(id)
+  }, [driverRoute])
+
+  const remainingS = driverRoute ? driverRoute.durationS * (1 - progress) : null
+  const etaLabel = remainingS == null ? 'Calculating…' : `${Math.max(1, Math.ceil(remainingS / 60))} min away`
+  const remainingKm = driverRoute ? driverRoute.distanceM * (1 - progress) : null
+  const driverPos: [number, number] | null = driverRoute
+    ? pointAt(driverRoute.coords, progress)
+    : [driverStart.lat, driverStart.lng]
 
   const send = () => {
     if (!draft.trim()) return
@@ -769,29 +597,21 @@ function TrackingScreen({ onNext, onBack }: { onNext: () => void; onBack: () => 
 
   return (
     <div className="flex flex-col relative" style={{height: 680}}>
-      <div className="relative flex-1">
-        <MapCanvas />
-        {/* route + markers */}
-        <svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 375 460" fill="none">
-          <Route d="M110 370C150 320 190 300 210 240s40-90 60-130" />
-          <circle cx="110" cy="370" r="7" fill="#E11D48" stroke="#fff" strokeWidth="3" />
-        </svg>
-        {/* animated car marker */}
-        <div className="absolute" style={{ left: '56%', top: '18%' }}>
-          <div className="w-10 h-10 rounded-full bg-white shadow-[0_4px_14px_rgba(0,0,0,0.25)] flex items-center justify-center">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-              <path d="M3 10.5h18M6.5 14h1.2m3.1 0h1.2m-6.6 3.8h10.6a2 2 0 002-2v-4.4a3 3 0 00-3-3H6.3a3 3 0 00-3 3v4.4a2 2 0 002 2z" stroke="#111" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M5.5 10.5l1.4-3.4A2 2 0 018.8 5.9h6.4a2 2 0 011.9 1.2l1.4 3.4" stroke="#111" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+      <div className="relative flex-1 isolate">
+        <RideMapView
+          pickup={pickup}
+          route={driverRoute?.coords ?? null}
+          cars={driverPos ? [driverPos] : []}
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/10 pointer-events-none" />
+        {remainingKm != null && (
+          <div className="absolute bottom-10 left-4 z-[1100] bg-white/95 backdrop-blur-md rounded-full px-3 py-1.5 shadow-[0_2px_10px_rgba(0,0,0,0.18)] anim-fade">
+            <span className="text-[11px] font-bold text-gray-900">{formatDistance(remainingKm)} away</span>
           </div>
-        </div>
-        {/* pickup dot */}
-        <div className="absolute" style={{ left: '26%', bottom: '18%' }}>
-          <div className="w-4 h-4 rounded-full bg-[#E11D48] border-4 border-white shadow-lg" />
-        </div>
+        )}
         {/* SOS */}
-        <button onClick={() => setSheet('sos')} className="absolute top-4 right-4 bg-[#E11D48] text-white text-xs font-800 px-4 py-2 rounded-xl shadow active:scale-95 transition-transform">SOS</button>
-        <button onClick={onBack} className="absolute top-4 left-4 w-9 h-9 bg-white rounded-full shadow flex items-center justify-center">
+        <button onClick={() => setSheet('sos')} className="absolute top-4 right-4 z-[1100] bg-[#E11D48] text-white text-xs font-800 px-4 py-2 rounded-xl shadow active:scale-95 transition-transform">SOS</button>
+        <button onClick={onBack} className="absolute top-4 left-4 z-[1100] w-9 h-9 bg-white rounded-full shadow flex items-center justify-center">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="#111" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </button>
       </div>
@@ -802,13 +622,13 @@ function TrackingScreen({ onNext, onBack }: { onNext: () => void; onBack: () => 
           <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"/>
           <span className="text-xs font-700 text-green-600 uppercase tracking-wider">Driver en route</span>
         </div>
-        <p className="text-2xl font-800 text-gray-900 mb-3 tracking-[-0.02em]">3 min away</p>
+        <p className="text-2xl font-800 text-gray-900 mb-3 tracking-[-0.02em]">{etaLabel}</p>
 
-        <button onClick={() => setSheet('driver')} className="w-full flex items-center gap-3 bg-gray-50 rounded-2xl p-3 mb-4 text-left hover:bg-gray-100 transition-colors">
+        <div role="button" tabIndex={0} onClick={() => setSheet('driver')} onKeyDown={e => e.key === 'Enter' && setSheet('driver')} className="w-full flex items-center gap-3 bg-gray-50 rounded-2xl p-3 mb-4 text-left hover:bg-gray-100 transition-colors cursor-pointer">
           <Avatar initials="KM" className="w-12 h-12 rounded-xl text-sm" />
           <div className="flex-1">
             <p className="font-700 text-gray-900 text-sm">Kevin Mohammed</p>
-            <p className="text-xs text-gray-400">Pickuptt X · PDS 1234</p>
+            <p className="text-xs text-gray-400">Pickuptt X · TPN 7084</p>
             <div className="flex items-center gap-1 mt-0.5">
               <Star filled size={12} />
               <span className="text-xs font-600 text-gray-600">4.92 · 2,841 trips</span>
@@ -822,7 +642,7 @@ function TrackingScreen({ onNext, onBack }: { onNext: () => void; onBack: () => 
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.4 8.4 0 01-9 8.4 8.9 8.9 0 01-4-.9L3 20.5l1.5-4.4a8.4 8.4 0 01-.9-3.9 8.4 8.4 0 018.4-8.4h.5A8.4 8.4 0 0121 11v.5z" stroke="#111" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </button>
           </div>
-        </button>
+        </div>
 
         <div className="flex gap-2">
           <button onClick={onNext} className="flex-1 py-3.5 rounded-full font-700 text-sm text-white flex items-center justify-center gap-1.5 shadow-[0_6px_18px_rgba(225,29,72,0.3)]" style={{background: RED}}>
@@ -865,7 +685,7 @@ function TrackingScreen({ onNext, onBack }: { onNext: () => void; onBack: () => 
         <div className="flex flex-col items-center text-center py-2 mb-2">
           <Avatar initials="KM" className="w-20 h-20 rounded-full text-2xl mb-3" />
           <p className="font-800 text-gray-900">Kevin Mohammed</p>
-          <p className="text-xs text-gray-400 font-500 mb-1">Pickuptt X · PDS 1234</p>
+          <p className="text-xs text-gray-400 font-500 mb-1">Pickuptt X · TPN 7084</p>
           <p className="text-sm font-600 text-green-600 animate-pulse mt-1">Ringing…</p>
         </div>
         <button onClick={() => setSheet(null)} className="mt-3 w-full py-4 rounded-full font-700 text-sm text-white bg-[#E11D48] flex items-center justify-center gap-2">
@@ -905,11 +725,11 @@ function TrackingScreen({ onNext, onBack }: { onNext: () => void; onBack: () => 
               <Star filled size={13} />
               <span className="text-xs font-600 text-gray-600">4.92 · 2,841 trips</span>
             </div>
-            <p className="text-xs text-gray-400 font-500 mt-0.5">Driving since 2021 · English, Hindi</p>
+            <p className="text-xs text-gray-400 font-500 mt-0.5">Driving since 2021 · English, Spanish</p>
           </div>
         </div>
         <div className="bg-gray-50 rounded-2xl p-4 mb-4">
-          <Row label="Vehicle" sub="Pickuptt X · Black" right={<span className="text-sm font-700 text-gray-900">PDS 1234</span>} />
+          <Row label="Vehicle" sub="Pickuptt X · Black" right={<span className="text-sm font-700 text-gray-900">TPN 7084</span>} />
           <Row label="Total paid this trip" right={<span className="text-sm font-700 text-gray-900">TT$ 45.00</span>} />
         </div>
         <button onClick={() => setSheet(null)} className="w-full py-3.5 rounded-full font-700 text-sm text-white bg-[#111]">Close</button>
@@ -1036,6 +856,9 @@ const TRUCKS = [
   { key: 'container', label: 'Container', sub: '10 t · freight', lo: 2600, hi: 3400, icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="2" y="6" width="20" height="10" rx="1.5" stroke="currentColor" strokeWidth="2"/><path d="M6 6v10M10 6v10M14 6v10M18 6v10" stroke="currentColor" strokeWidth="1.6"/><circle cx="7" cy="18.5" r="1.8" stroke="currentColor" strokeWidth="2"/><circle cx="17" cy="18.5" r="1.8" stroke="currentColor" strokeWidth="2"/></svg> },
 ]
 
+const PKG_PICKUP: Place = { id: 'pkg-pickup', label: '12 Maraval Rd, St Clair, Port of Spain', lat: 10.6657, lng: -61.5194 }
+const PKG_DEST: Place = { id: 'pkg-dest', label: '45 Southern Main Rd, Chaguanas', lat: 10.5471, lng: -61.3743 }
+
 function PackageScreen({ onBack }: { onBack: () => void }) {
   const [mode, setMode] = useState<'parcel' | 'cargo'>('parcel')
   const [category, setCategory] = useState('food')
@@ -1046,6 +869,15 @@ function PackageScreen({ onBack }: { onBack: () => void }) {
   const [sheet, setSheet] = useState<null | 'photo' | 'agent' | 'fare'>(null)
   const [searching, setSearching] = useState(false)
   const [photoAdded, setPhotoAdded] = useState(false)
+  const [route, setRoute] = useState<RouteResult | null>(null)
+
+  useEffect(() => {
+    const ctrl = new AbortController()
+    fetchRoute(PKG_PICKUP, PKG_DEST, ctrl.signal)
+      .then(r => setRoute(r))
+      .catch(() => {})
+    return () => ctrl.abort()
+  }, [])
 
   const truckInfo = TRUCKS.find(t => t.key === truck)!
   const weightExtra = Math.round(weight / 50) * 25
@@ -1080,24 +912,28 @@ function PackageScreen({ onBack }: { onBack: () => void }) {
           ))}
         </div>
         {/* Route map */}
-        <div className="relative h-36 rounded-2xl overflow-hidden ring-1 ring-black/5 shadow-sm">
-          <MapCanvas />
-          <svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 335 144" fill="none">
-            <Route d="M60 110C110 90 160 70 270 40" />
-            <circle cx="60" cy="110" r="7" fill="#E11D48" stroke="#fff" strokeWidth="3" />
-            <circle cx="270" cy="40" r="7" fill="#111" stroke="#fff" strokeWidth="3" />
-          </svg>
-          <div className="absolute bottom-2 left-2 bg-white/95 backdrop-blur px-2.5 py-1 rounded-full text-[10px] font-700 text-gray-800 shadow">4.6 km · 18 min</div>
+        <div className="relative h-36 rounded-2xl overflow-hidden ring-1 ring-black/5 shadow-sm isolate">
+          <RideMapView
+            pickup={PKG_PICKUP}
+            dest={PKG_DEST}
+            route={route?.coords ?? null}
+            cars={carsAround(PKG_PICKUP, 3)}
+            interactive={false}
+            zoom={11}
+          />
+          <div className="absolute bottom-2 left-2 z-[1100] bg-white/95 backdrop-blur px-2.5 py-1 rounded-full text-[10px] font-700 text-gray-800 shadow">
+            {route ? `${formatDistance(route.distanceM)} · ${formatDuration(route.durationS)}` : 'Calculating route…'}
+          </div>
         </div>
 
         <div className="space-y-2">
           <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
             <div className="w-2.5 h-2.5 rounded-full" style={{background: RED}}/>
-            <input className="flex-1 bg-transparent outline-none text-sm font-500 text-gray-800 placeholder-gray-300" placeholder="Pickup location" defaultValue="No. 12, Galle Road, Colombo 3"/>
+            <input className="flex-1 bg-transparent outline-none text-sm font-500 text-gray-800 placeholder-gray-300" placeholder="Pickup location" defaultValue="12 Maraval Rd, St Clair, Port of Spain"/>
           </div>
           <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
             <div className="w-2.5 h-2.5 rounded-sm bg-gray-900"/>
-            <input className="flex-1 bg-transparent outline-none text-sm font-500 text-gray-800 placeholder-gray-300" placeholder="Delivery location" defaultValue="No. 45, Kandy Road, Kelaniya"/>
+            <input className="flex-1 bg-transparent outline-none text-sm font-500 text-gray-800 placeholder-gray-300" placeholder="Delivery location" defaultValue="45 Southern Main Rd, Chaguanas"/>
           </div>
         </div>
 
@@ -1265,7 +1101,7 @@ function PackageScreen({ onBack }: { onBack: () => void }) {
               <div className="flex-1">
                 <p className="font-800 text-gray-900">{mode === 'parcel' ? 'Rajesh Deo' : 'Kwesi Boateng'}</p>
                 <p className="text-xs text-gray-400 font-500">
-                  {mode === 'parcel' ? 'Bike courier · TDT 4471' : `${truckInfo.label} driver · TDT 8892`}
+                  {mode === 'parcel' ? 'Bike courier · TDR 5163' : `${truckInfo.label} driver · TDT 8892`}
                 </p>
                 <div className="flex items-center gap-1 mt-0.5">
                   <Star filled size={12} />
@@ -1329,7 +1165,7 @@ function ProfileScreen({ onBack }: { onBack: () => void }) {
           <div className="space-y-3">
             {[
               { t: 'Ride to Piarco Int’l', d: 'Sep 30 · 15 min', f: 'TT$ 45.00' },
-              { t: 'Package to Kelaniya', d: 'Sep 28 · 18 min', f: 'TT$ 280.00' },
+              { t: 'Package to Chaguanas', d: 'Sep 28 · 18 min', f: 'TT$ 280.00' },
               { t: 'Ride to MovieTowne', d: 'Sep 26 · 9 min', f: 'TT$ 32.00' },
               { t: 'Bike taxi to Savannah', d: 'Sep 21 · 7 min', f: 'TT$ 18.00' },
             ].map(x => (
@@ -1495,7 +1331,7 @@ function ProfileScreen({ onBack }: { onBack: () => void }) {
             </div>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name"
               className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm font-600 outline-none border-2 border-transparent focus:border-gray-300"/>
-            <input defaultValue="+94 77 123 4567" placeholder="Phone"
+            <input defaultValue="+1 868 555 0143" placeholder="Phone"
               className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm font-600 outline-none border-2 border-transparent focus:border-gray-300"/>
             <input defaultValue="kamal@example.com" placeholder="Email"
               className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm font-600 outline-none border-2 border-transparent focus:border-gray-300"/>
@@ -1510,26 +1346,26 @@ function ProfileScreen({ onBack }: { onBack: () => void }) {
   return (
     <div className="flex flex-col relative" style={{height: 680}}>
       <div className="px-5 pt-4 pb-2 flex items-center gap-3">
-        <button onClick={onBack}><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="#111" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+        <button onClick={onBack} className="w-9 h-9 -ml-1 rounded-full bg-red-50 flex items-center justify-center active:scale-95 transition-transform"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke={RED} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
         <h2 className="font-800 text-xl text-gray-900">My Profile</h2>
       </div>
 
       <div className="px-5 mb-5">
         <button onClick={() => setSheet('edit')} className="w-full text-left flex items-center gap-4 bg-gray-50 hover:bg-gray-100 rounded-2xl p-4 transition-colors">
           <div className="relative">
-            <Avatar initials="KP" className="w-16 h-16 rounded-2xl text-lg" />
+            <Avatar initials="KP" className="w-16 h-16 rounded-2xl text-lg ring-2 ring-[#E11D48]/50" />
             <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center" style={{background:RED}}>
               <svg width="8" height="8" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="white" strokeWidth="2.5" strokeLinecap="round"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="white" strokeWidth="2.5" strokeLinecap="round"/></svg>
             </div>
           </div>
           <div>
             <p className="font-800 text-gray-900">{name}</p>
-            <p className="text-xs text-gray-400 font-500">+94 77 123 4567</p>
+            <p className="text-xs text-gray-400 font-500">+1 868 555 0143</p>
             <p className="text-xs text-gray-400 font-500">kamal@example.com</p>
           </div>
           <div className="ml-auto text-right">
             <p className="text-xs text-gray-400">Wallet</p>
-            <p className="font-800 text-gray-900 text-sm">TT$ 1,250</p>
+            <p className="font-800 text-sm" style={{color: RED}}>TT$ 1,250</p>
           </div>
         </button>
       </div>
@@ -1537,10 +1373,10 @@ function ProfileScreen({ onBack }: { onBack: () => void }) {
       <div className="flex-1 overflow-auto px-5 space-y-2">
         {PROFILE_MENU.map(item => (
           <button key={item.key} onClick={() => setSheet(item.key)}
-            className="w-full flex items-center gap-3 bg-gray-50 hover:bg-gray-100 rounded-xl px-4 py-3 transition-colors text-left">
-            <span className="w-9 h-9 rounded-lg bg-white shadow-sm ring-1 ring-black/5 flex items-center justify-center text-gray-700 shrink-0">{item.icon}</span>
+            className="group w-full flex items-center gap-3 bg-gray-50 hover:bg-red-50 rounded-xl px-4 py-3 transition-colors text-left">
+            <span className="w-9 h-9 rounded-lg bg-white shadow-sm ring-1 ring-black/5 flex items-center justify-center shrink-0 text-gray-700 group-hover:text-[#E11D48] group-hover:ring-[#E11D48]/30 transition-colors">{item.icon}</span>
             <div className="flex-1">
-              <p className="text-sm font-600 text-gray-800">{item.label}</p>
+              <p className="text-sm font-600 text-gray-800 group-hover:text-[#E11D48]">{item.label}</p>
               {item.sub && <p className="text-xs text-gray-400">{item.sub}</p>}
             </div>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#ccc" strokeWidth="2" strokeLinecap="round"/></svg>
@@ -1557,8 +1393,8 @@ function ProfileScreen({ onBack }: { onBack: () => void }) {
 
 export default function CustomerApp() {
   const [screen, setScreen] = useState<Screen>('splash')
-  const [pickup, setPickup] = useState('Current location')
-  const [dest, setDest] = useState('')
+  const [pickup, setPickup] = useState<Place>(POS_CENTER)
+  const [dest, setDest] = useState<Place | null>(null)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 flex flex-col items-center py-10">
@@ -1579,7 +1415,7 @@ export default function CustomerApp() {
         {screen === 'home' && <HomeScreen onRide={() => setScreen('ride')} onPackage={() => setScreen('package')} onProfile={() => setScreen('profile')}/>}
         {screen === 'ride' && <RideScreen onNext={() => setScreen('vehicle')} onBack={() => setScreen('home')} pickup={pickup} setPickup={setPickup} dest={dest} setDest={setDest}/>}
         {screen === 'vehicle' && <VehicleScreen onNext={() => setScreen('tracking')} onBack={() => setScreen('ride')} pickup={pickup} dest={dest}/>}
-        {screen === 'tracking' && <TrackingScreen onNext={() => setScreen('complete')} onBack={() => setScreen('vehicle')}/>}
+        {screen === 'tracking' && <TrackingScreen onNext={() => setScreen('complete')} onBack={() => setScreen('vehicle')} pickup={pickup}/>}
         {screen === 'complete' && <CompleteScreen onBack={() => setScreen('home')}/>}
         {screen === 'package' && <PackageScreen onBack={() => setScreen('home')}/>}
         {screen === 'profile' && <ProfileScreen onBack={() => setScreen('home')}/>}

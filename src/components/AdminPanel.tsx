@@ -72,11 +72,11 @@ function Status({ s }: { s: string }) {
 type Ride = { id: string; type: string; passenger: string; driver: string; from: string; to: string; fare: string; status: string; date: string }
 
 const RIDES: Ride[] = [
-  { id:'#R-10042', type:'Ride', passenger:'Kamal Perera', driver:'Saman K.', from:'Colombo Fort', to:'Bambalapitiya', fare:'TT$ 380', status:'completed', date:'Sep 30 09:12' },
-  { id:'#R-10041', type:'Package', passenger:'Dilani Silva', driver:'Ajith P.', from:'Kandy Road', to:'Pettah', fare:'TT$ 220', status:'in-progress', date:'Sep 30 09:08' },
-  { id:'#R-10040', type:'Cargo', passenger:'Ruwani Mendis', driver:'Nuwan S.', from:'Mount Lavinia', to:'Wellawatte', fare:'TT$ 850', status:'cancelled', date:'Sep 30 08:54' },
-  { id:'#R-10039', type:'Ambulance', passenger:'Chamil D.', driver:'Gayan R.', from:'Dehiwala', to:'National Hospital', fare:'TT$ 1,200', status:'completed', date:'Sep 29 23:40' },
-  { id:'#R-10038', type:'Ride', passenger:'Priya F.', driver:'Suresh M.', from:'Maradana', to:'Galle Face', fare:'TT$ 190', status:'completed', date:'Sep 29 22:30' },
+  { id:'#R-10042', type:'Ride', passenger:'Kamal Perera', driver:'Andre B.', from:'Port of Spain', to:'Piarco Airport', fare:'TT$ 165', status:'completed', date:'Sep 30 09:12' },
+  { id:'#R-10041', type:'Package', passenger:'Dilani Silva', driver:'Devon C.', from:'Arima', to:'Chaguanas', fare:'TT$ 260', status:'in-progress', date:'Sep 30 09:08' },
+  { id:'#R-10040', type:'Cargo', passenger:'Ruwani Mendis', driver:'Ravi S.', from:'Claxton Bay', to:'Marabella', fare:'TT$ 850', status:'cancelled', date:'Sep 30 08:54' },
+  { id:'#R-10039', type:'Ambulance', passenger:'Chamil D.', driver:'Kwame C.', from:'Diego Martin', to:'General Hospital, POS', fare:'TT$ 1,200', status:'completed', date:'Sep 29 23:40' },
+  { id:'#R-10038', type:'Ride', passenger:'Priya F.', driver:'Marcus J.', from:'Maraval', to:'MovieTowne POS', fare:'TT$ 75', status:'completed', date:'Sep 29 22:30' },
 ]
 
 function RideSheet({ ride, onClose }: { ride: Ride | null; onClose: () => void }) {
@@ -266,11 +266,11 @@ type Driver = { name: string; phone: string; vehicle: string; plate: string; rat
 
 function DriversPanel() {
   const [drivers, setDrivers] = useState<Driver[]>([
-    { name: 'Saman Kumara', phone: '+94 77 234 5678', vehicle: 'Toyota Sedan', plate: 'WP CAA-1234', rating: 4.92, trips: 2841, status: 'online' },
-    { name: 'Nuwan Silva', phone: '+94 71 345 6789', vehicle: 'Suzuki Alto', plate: 'WP CBB-5678', rating: 4.85, trips: 1923, status: 'offline' },
-    { name: 'Ajith Perera', phone: '+94 76 456 7890', vehicle: 'Honda Fit', plate: 'WP CCC-9012', rating: 4.78, trips: 1105, status: 'on-trip' },
-    { name: 'Gayan Rajapaksa', phone: '+94 70 567 8901', vehicle: 'Toyota Vitz', plate: 'WP CDD-3456', rating: 4.90, trips: 3290, status: 'online' },
-    { name: 'Suresh Mahinda', phone: '+94 77 678 9012', vehicle: 'Suzuki Wagon R', plate: 'WP CEE-7890', rating: 4.65, trips: 742, status: 'suspended' },
+    { name: 'Andre Browne', phone: '+1 868 555 0142', vehicle: 'Toyota Vitz', plate: 'TDT 4471', rating: 4.92, trips: 2841, status: 'online' },
+    { name: 'Ravi Singh', phone: '+1 868 555 0173', vehicle: 'Nissan Note', plate: 'TDN 9832', rating: 4.85, trips: 1923, status: 'offline' },
+    { name: 'Marcus Joseph', phone: '+1 868 555 0119', vehicle: 'Honda Fit', plate: 'THK 6621', rating: 4.78, trips: 1105, status: 'on-trip' },
+    { name: 'Devon Charles', phone: '+1 868 555 0186', vehicle: 'Kia Picanto', plate: 'TGJ 3054', rating: 4.90, trips: 3290, status: 'online' },
+    { name: 'Kwame Clarke', phone: '+1 868 555 0127', vehicle: 'Toyota Corolla', plate: 'TPH 7715', rating: 4.65, trips: 742, status: 'suspended' },
   ])
   const [filter, setFilter] = useState('All')
   const [q, setQ] = useState('')
@@ -356,9 +356,9 @@ function DriversPanel() {
 
 function PassengersPanel() {
   const [pax, setPax] = useState([
-    { name: 'Kamal Perera', phone: '+94 77 123 4567', email: 'kamal@example.com', trips: 24, wallet: 'TT$ 1,250', status: 'active', joined: 'Feb 2024' },
-    { name: 'Dilani Silva', phone: '+94 71 234 5678', email: 'dilani@example.com', trips: 12, wallet: 'TT$ 500', status: 'active', joined: 'Apr 2024' },
-    { name: 'Ruwani Mendis', phone: '+94 76 345 6789', email: 'ruwani@example.com', trips: 5, wallet: 'TT$ 0', status: 'blocked', joined: 'Jun 2024' },
+    { name: 'Kamal Perera', phone: '+1 868 555 0101', email: 'kamal@example.com', trips: 24, wallet: 'TT$ 1,250', status: 'active', joined: 'Feb 2024' },
+    { name: 'Dilani Silva', phone: '+1 868 555 0164', email: 'dilani@example.com', trips: 12, wallet: 'TT$ 500', status: 'active', joined: 'Apr 2024' },
+    { name: 'Ruwani Mendis', phone: '+1 868 555 0193', email: 'ruwani@example.com', trips: 5, wallet: 'TT$ 0', status: 'blocked', joined: 'Jun 2024' },
   ])
   const [sel, setSel] = useState<typeof pax[number] | null>(null)
 

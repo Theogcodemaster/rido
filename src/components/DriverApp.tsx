@@ -1,9 +1,15 @@
 import { useEffect, useState } from 'react'
-import { MapCanvas, Avatar, Star, Sheet, Toggle, Row, Route } from './shared-ui'
+import { Avatar, Star, Sheet, Toggle, Row } from './shared-ui'
+import RideMapView from './RideMapView'
+import { POS_CENTER, carsAround, formatDistance, formatDuration, type Place } from '../lib/places'
+import { fetchRoute, pointAt, type RouteResult } from '../lib/route'
 
 type Screen = 'home' | 'request' | 'active' | 'earnings' | 'history'
 
 const RED = '#E11D48'
+
+const MOVIE_TOWNE: Place = { id: 'movietowne', label: 'MovieTowne POS', sub: 'Audrey Jeffers Hwy, Woodbrook', lat: 10.6584, lng: -61.5330 }
+const PIARCO: Place = { id: 'piarco', label: 'Piarco International', sub: 'Golden Grove Rd, Piarco', lat: 10.5961, lng: -61.3362 }
 
 function PhoneFrame({ children }: { children: React.ReactNode }) {
   return (
@@ -52,15 +58,16 @@ function DriverHome({ onRequest, onEarnings, onHistory }: { onRequest: ()=>void;
 
       {/* Stats row */}
       <div className="px-5 mb-5">
-         <button onClick={onEarnings} className="w-full text-left bg-gray-900 rounded-3xl p-5 text-white flex justify-between items-center shadow-lg shadow-gray-900/20 active:scale-[0.99] transition-transform">
+         <button onClick={onEarnings} className="relative w-full overflow-hidden text-left bg-gray-900 rounded-3xl p-5 text-white flex justify-between items-center shadow-lg shadow-gray-900/20 active:scale-[0.99] transition-transform">
+            <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-[#E11D48]/30 blur-2xl pointer-events-none"/>
             <div>
                <p className="text-gray-400 text-xs font-600 uppercase tracking-wider mb-1">Today's Earnings</p>
                <p className="text-3xl font-800 tracking-tight">TT$ 485.50</p>
             </div>
-            <div className="text-right flex flex-col items-end">
+            <div className="relative text-right flex flex-col items-end">
                <p className="text-gray-400 text-xs font-600 uppercase tracking-wider mb-1">Trips</p>
                <p className="text-xl font-800 tracking-tight">8</p>
-               <span className="text-xs font-700 text-white/60 flex items-center gap-1 mt-1">Details
+               <span className="text-xs font-700 text-[#FF6B8A] flex items-center gap-1 mt-1">Details
                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"/></svg>
                </span>
             </div>
@@ -68,21 +75,16 @@ function DriverHome({ onRequest, onEarnings, onHistory }: { onRequest: ()=>void;
       </div>
 
       {/* Map */}
-      <div className="relative flex-1 mx-5 rounded-3xl overflow-hidden mb-5 border border-gray-100 shadow-sm">
-        <MapCanvas />
-        <svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 335 260" fill="none">
-          <Route d="M70 200C110 170 170 160 210 110" />
-          <circle cx="70" cy="200" r="7" fill="#111" stroke="#fff" strokeWidth="3" />
-          <circle cx="210" cy="110" r="7" fill="#E11D48" stroke="#fff" strokeWidth="3" />
-        </svg>
+      <div className="relative flex-1 mx-5 rounded-3xl overflow-hidden mb-5 border border-gray-100 shadow-sm isolate">
+        <RideMapView pickup={POS_CENTER} cars={carsAround(POS_CENTER)} />
         {online && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/5">
              <div className="absolute inset-0 flex items-center justify-center">
-                 <div className="w-48 h-48 rounded-full border border-green-500/30 animate-[ping_2s_cubic-bezier(0,0,0.2,1)_infinite] absolute"/>
-                 <div className="w-32 h-32 rounded-full border border-green-500/50 animate-[ping_2s_cubic-bezier(0,0,0.2,1)_infinite_0.5s] absolute"/>
+                 <div className="w-48 h-48 rounded-full border border-[#E11D48]/40 animate-[ping_2s_cubic-bezier(0,0,0.2,1)_infinite] absolute"/>
+                 <div className="w-32 h-32 rounded-full border border-[#E11D48]/60 animate-[ping_2s_cubic-bezier(0,0,0.2,1)_infinite_0.5s] absolute"/>
              </div>
             <div className="bg-white/95 backdrop-blur-md rounded-full px-5 py-2.5 shadow-lg flex items-center gap-2 z-10 border border-gray-100">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"/>
+              <div className="w-2 h-2 bg-[#E11D48] rounded-full animate-pulse"/>
               <p className="text-sm font-700 text-gray-800">Finding trips...</p>
             </div>
           </div>
@@ -97,7 +99,7 @@ function DriverHome({ onRequest, onEarnings, onHistory }: { onRequest: ()=>void;
               <Avatar initials="KS" className="w-16 h-16 rounded-2xl text-lg" />
               <div className="flex-1">
                 <p className="font-800 text-gray-900">Keston Samuel</p>
-                <p className="text-xs text-gray-400 font-500">+1 868 555 0143</p>
+                <p className="text-xs text-gray-400 font-500">+1 868 555 0177</p>
                 <div className="flex items-center gap-1 mt-1">
                   <Star filled size={13} />
                   <span className="text-xs font-700 text-gray-700">4.92</span>
@@ -106,7 +108,7 @@ function DriverHome({ onRequest, onEarnings, onHistory }: { onRequest: ()=>void;
               </div>
             </div>
             <div className="space-y-1 mb-4">
-              <Row label="My vehicle" sub="Toyota Axia · TDT 4471" right={<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#ccc" strokeWidth="2.4" strokeLinecap="round"/></svg>} onClick={() => setSheet('vehicle')} />
+              <Row label="My vehicle" sub="Honda Fit · THP 2358" right={<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#ccc" strokeWidth="2.4" strokeLinecap="round"/></svg>} onClick={() => setSheet('vehicle')} />
               <Row label="Documents" sub="3 valid · 1 expiring in 12 days" right={<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#ccc" strokeWidth="2.4" strokeLinecap="round"/></svg>} onClick={() => setSheet('docs')} />
               <Row label="Payout & bank" sub="Weekly · ScotiaBank ••4417" right={<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#ccc" strokeWidth="2.4" strokeLinecap="round"/></svg>} onClick={() => setSheet(null)} />
               <Row label="Help & support" right={<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#ccc" strokeWidth="2.4" strokeLinecap="round"/></svg>} onClick={() => setSheet(null)} />
@@ -116,8 +118,8 @@ function DriverHome({ onRequest, onEarnings, onHistory }: { onRequest: ()=>void;
         )}
         {sheet === 'vehicle' && (
           <div className="bg-gray-50 rounded-2xl p-4">
-            <Row label="Model" right={<span className="text-sm font-700 text-gray-900">Toyota Axia 1.0</span>} />
-            <Row label="Plate" right={<span className="text-sm font-800 text-gray-900">TDT 4471</span>} />
+            <Row label="Model" right={<span className="text-sm font-700 text-gray-900">Honda Fit 1.5</span>} />
+            <Row label="Plate" right={<span className="text-sm font-800 text-gray-900">THP 2358</span>} />
             <Row label="Color" right={<span className="text-sm font-700 text-gray-900">Silver</span>} />
             <Row label="Insurance" right={<span className="text-sm font-700 text-green-600">Valid to Jun 2027</span>} />
             <Row label="Inspection" right={<span className="text-sm font-700 text-gray-900">Passed · Aug 2026</span>} />
@@ -170,6 +172,15 @@ function IncomingRequest({ onAccept, onReject }: { onAccept: ()=>void; onReject:
   const [fare, setFare] = useState(45)
   const [count, setCount] = useState(8)
   const [sheet, setSheet] = useState<null | 'rider' | 'route'>(null)
+  const [route, setRoute] = useState<RouteResult | null>(null)
+
+  useEffect(() => {
+    const ctrl = new AbortController()
+    fetchRoute(MOVIE_TOWNE, PIARCO, ctrl.signal)
+      .then(r => setRoute(r))
+      .catch(() => {})
+    return () => ctrl.abort()
+  }, [])
 
   useEffect(() => {
     if (sheet) return
@@ -180,24 +191,25 @@ function IncomingRequest({ onAccept, onReject }: { onAccept: ()=>void; onReject:
 
   return (
     <div className="flex flex-col bg-gray-900 relative" style={{height: 680}}>
-      <div className="relative flex-1">
-        <MapCanvas />
-        <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"/>
-        <svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 375 460" fill="none">
-          <Route d="M90 360C140 320 180 280 210 220" />
-        </svg>
-
-        {/* Pulsing origin marker */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-           <div className="w-32 h-32 bg-green-500/20 rounded-full animate-ping absolute -inset-14"/>
-           <div className="w-4 h-4 bg-green-500 border-2 border-white rounded-full shadow-lg relative z-10"/>
-        </div>
+      <div className="relative flex-1 isolate">
+        <RideMapView
+          pickup={MOVIE_TOWNE}
+          dest={PIARCO}
+          route={route?.coords ?? null}
+          cars={carsAround(MOVIE_TOWNE, 3)}
+        />
+        <div className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-black/60 via-black/10 to-transparent pointer-events-none"/>
 
         <button onClick={() => setSheet('route')}
-          className="absolute top-4 right-4 bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-full text-xs font-700 text-gray-900 shadow-md flex items-center gap-1.5 active:scale-95 transition-transform">
+          className="absolute top-4 right-4 z-[1100] bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-full text-xs font-700 text-gray-900 shadow-md flex items-center gap-1.5 active:scale-95 transition-transform">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#111" strokeWidth="2.6" strokeLinecap="round"/></svg>
           Trip preview
         </button>
+        {route && (
+          <div className="absolute top-4 left-4 z-[1100] bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-full shadow-md anim-fade">
+            <span className="text-xs font-700 text-gray-900">{formatDistance(route.distanceM)} · {formatDuration(route.durationS)}</span>
+          </div>
+        )}
       </div>
 
       {/* Request card */}
@@ -224,7 +236,7 @@ function IncomingRequest({ onAccept, onReject }: { onAccept: ()=>void; onReject:
           </div>
           <div className="ml-auto text-right">
             <p className="font-800 text-2xl text-gray-900 tracking-tight">TT$ {fare}</p>
-            <p className="text-xs text-gray-500 font-600 mt-0.5">3.2 km total</p>
+            <p className="text-xs text-gray-500 font-600 mt-0.5">{route ? formatDistance(route.distanceM) : '3.2 km'} total</p>
           </div>
         </button>
 
@@ -283,7 +295,7 @@ function IncomingRequest({ onAccept, onReject }: { onAccept: ()=>void; onReject:
 
       <Sheet open={sheet === 'route'} onClose={() => setSheet(null)} title="Trip preview">
         <div className="bg-gray-50 rounded-2xl p-4 mb-4">
-          <Row label="MovieTowne POS → Piarco International" sub="3.2 km · about 16 min" />
+          <Row label="MovieTowne POS → Piarco International" sub={route ? `${formatDistance(route.distanceM)} · about ${formatDuration(route.durationS)}` : '3.2 km · about 16 min'} />
           <Row label="Pickup ETA" right={<span className="text-sm font-700 text-gray-900">2 min (0.5 km)</span>} />
           <Row label="Base fare" right={<span className="text-sm font-700 text-gray-900">TT$ {fare}.00</span>} />
           <Row label="Platform fee (15%)" right={<span className="text-sm font-700 text-gray-900">- TT$ {Math.round(fare * 0.15)}.00</span>} />
@@ -301,34 +313,65 @@ function IncomingRequest({ onAccept, onReject }: { onAccept: ()=>void; onReject:
 function ActiveRide({ onComplete, onBack }: { onComplete: ()=>void; onBack: ()=>void }) {
   const [stage, setStage] = useState<'pickup'|'inprogress'>('pickup')
   const [sheet, setSheet] = useState<null | 'call' | 'nav' | 'report'>(null)
+  const [toPickup, setToPickup] = useState<RouteResult | null>(null)
+  const [tripRoute, setTripRoute] = useState<RouteResult | null>(null)
+  const [progress, setProgress] = useState(0)
+
+  const driverStart: Place = { ...MOVIE_TOWNE, id: 'driver', lat: MOVIE_TOWNE.lat + 0.009, lng: MOVIE_TOWNE.lng + 0.007 }
+
+  useEffect(() => {
+    const ctrl = new AbortController()
+    fetchRoute(driverStart, MOVIE_TOWNE, ctrl.signal).then(r => setToPickup(r)).catch(() => {})
+    fetchRoute(MOVIE_TOWNE, PIARCO, ctrl.signal).then(r => setTripRoute(r)).catch(() => {})
+    return () => ctrl.abort()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => { setProgress(0) }, [stage])
+
+  useEffect(() => {
+    const active = stage === 'pickup' ? toPickup : tripRoute
+    if (!active) return
+    const id = setInterval(() => {
+      setProgress(p => Math.min(0.97, p + 0.5 / 28))
+    }, 500)
+    return () => clearInterval(id)
+  }, [stage, toPickup, tripRoute])
+
+  const activeRoute = stage === 'pickup' ? toPickup : tripRoute
+  const target = stage === 'pickup' ? MOVIE_TOWNE : PIARCO
+  const remainingS = activeRoute ? activeRoute.durationS * (1 - progress) : null
+  const etaLabel = remainingS == null ? '—' : `${Math.max(1, Math.ceil(remainingS / 60))} min`
+  const carPos: [number, number] | null = activeRoute
+    ? pointAt(activeRoute.coords, progress)
+    : [driverStart.lat, driverStart.lng]
+
   return (
     <div className="flex flex-col bg-white relative" style={{height: 680}}>
-      <div className="relative flex-1">
-        <MapCanvas />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/20 to-transparent pointer-events-none"/>
+      <div className="relative flex-1 isolate">
+        <RideMapView
+          dest={target}
+          route={activeRoute?.coords ?? null}
+          cars={carPos ? [carPos] : []}
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/25 to-transparent pointer-events-none"/>
 
         {/* Back button */}
         <button onClick={onBack}
-          className="absolute top-5 left-5 w-10 h-10 rounded-full bg-white/95 backdrop-blur-md shadow-[0_2px_10px_rgba(0,0,0,0.18)] flex items-center justify-center active:scale-95 transition-transform z-10">
+          className="absolute top-5 left-5 z-[1100] w-10 h-10 rounded-full bg-white/95 backdrop-blur-md shadow-[0_2px_10px_rgba(0,0,0,0.18)] flex items-center justify-center active:scale-95 transition-transform">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="#111" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </button>
 
         {/* Navigation panel */}
-        <button onClick={() => setSheet('nav')} className="absolute top-5 left-[68px] right-5 bg-gray-900 rounded-3xl shadow-lg p-4 flex items-center gap-4 text-white text-left active:scale-[0.99] transition-transform">
+        <button onClick={() => setSheet('nav')} className="absolute top-5 left-[68px] right-5 z-[1100] bg-gray-900 rounded-3xl shadow-lg p-4 flex items-center gap-4 text-white text-left active:scale-[0.99] transition-transform">
            <div className="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
            </div>
            <div>
-              <p className="text-3xl font-800 tracking-tight">200 m</p>
+              <p className="text-3xl font-800 tracking-tight">{activeRoute ? formatDistance(activeRoute.distanceM * (1 - progress)) : '…'}</p>
               <p className="text-gray-400 text-sm font-600">Turn right on Wrightson Rd</p>
            </div>
         </button>
-
-        {/* Route Line on Map */}
-        <svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 375 400" fill="none">
-          <Route d="M180 300C180 200 220 150 280 120" />
-          <circle cx="280" cy="120" r="8" fill="#E11D48" stroke="#fff" strokeWidth="3" />
-        </svg>
       </div>
 
       <div className="bg-white rounded-t-3xl -mt-6 z-10 px-6 pt-5 pb-6 shadow-[0_-8px_30px_rgba(0,0,0,0.05)]">
@@ -341,7 +384,7 @@ function ActiveRide({ onComplete, onBack }: { onComplete: ()=>void; onBack: ()=>
                {stage === 'pickup' ? 'Heading to pickup' : 'Trip in progress'}
              </span>
            </div>
-           <span className="font-800 text-gray-900">2 min</span>
+           <span className="font-800 text-gray-900">{etaLabel}</span>
         </div>
 
         <div className="flex items-center gap-4 bg-gray-50 border border-gray-100 rounded-2xl p-4 mb-6">
@@ -441,11 +484,11 @@ function EarningsScreen({ onBack }: { onBack: ()=>void }) {
   return (
     <div className="flex flex-col relative" style={{height: 680}}>
       <div className="px-5 pt-4 pb-2 flex items-center gap-3">
-        <button onClick={onBack}><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M5 12l7-7M5 12l7 7" stroke="#111" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+        <button onClick={onBack} className="w-9 h-9 -ml-1 rounded-full bg-red-50 flex items-center justify-center active:scale-95 transition-transform"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M5 12l7-7M5 12l7 7" stroke={RED} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
         <h2 className="font-800 text-xl text-gray-900">Earnings</h2>
       </div>
 
-      <div className="px-5">
+      <div className="px-5 flex-1 overflow-y-auto pb-4">
         <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-xl">
           {(['daily','weekly','monthly'] as const).map(p => (
             <button key={p} onClick={() => setPeriod(p)} className={`flex-1 py-1.5 rounded-lg text-xs font-700 capitalize transition-all ${period===p?'bg-white text-gray-900 shadow':'text-gray-400'}`}>{p}</button>
@@ -486,7 +529,7 @@ function EarningsScreen({ onBack }: { onBack: ()=>void }) {
           ))}
         </div>
 
-        <button onClick={() => setSheet('cashout')} className="w-full py-3.5 rounded-full font-800 text-sm text-white bg-[#111] shadow-lg active:scale-[0.98] transition-transform">
+        <button onClick={() => setSheet('cashout')} className="w-full py-3.5 rounded-full font-800 text-sm text-white shadow-lg active:scale-[0.98] transition-transform" style={{background: RED, boxShadow: '0 8px 24px rgba(225,29,72,0.35)'}}>
           Cash out wallet
         </button>
       </div>
@@ -537,12 +580,12 @@ function HistoryScreen({ onBack }: { onBack: ()=>void }) {
   return (
     <div className="flex flex-col relative" style={{height: 680}}>
       <div className="px-5 pt-4 pb-2 flex items-center gap-3">
-        <button onClick={onBack}><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M5 12l7-7M5 12l7 7" stroke="#111" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+        <button onClick={onBack} className="w-9 h-9 -ml-1 rounded-full bg-red-50 flex items-center justify-center active:scale-95 transition-transform"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M5 12l7-7M5 12l7 7" stroke={RED} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
         <h2 className="font-800 text-xl text-gray-900">Trip History</h2>
       </div>
       <div className="flex-1 overflow-auto px-5 space-y-3">
         {TRIPS.map((t, i) => (
-          <button key={i} onClick={() => setDetail(t)} className="w-full text-left bg-gray-50 hover:bg-gray-100 rounded-2xl p-4 transition-colors active:scale-[0.99]">
+          <button key={i} onClick={() => setDetail(t)} className="w-full text-left bg-gray-50 hover:bg-gray-100 rounded-2xl p-4 transition-colors active:scale-[0.99] border-l-[3px] border-[#E11D48]">
             <div className="flex justify-between items-center mb-2">
               <span className="font-700 text-sm text-gray-900">{t.name}</span>
               <span className={`text-xs font-700 px-2 py-0.5 rounded-full ${t.status==='completed'?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}`}>{t.status}</span>
@@ -601,10 +644,10 @@ function HistoryScreen({ onBack }: { onBack: ()=>void }) {
 }
 
 const TRIPS = [
-  {name:'Kamal Perera',from:'Colombo Fort',to:'Bambalapitiya',fare:'TT$ 380',status:'completed',date:'Today 09:12'},
-  {name:'Dilani Silva',from:'Kandy Road',to:'Pettah',fare:'TT$ 220',status:'completed',date:'Today 08:45'},
-  {name:'Ruwani Mendis',from:'Mount Lavinia',to:'Wellawatte',fare:'TT$ 450',status:'cancelled',date:'Yesterday 18:30'},
-  {name:'Priya Fernando',from:'Dehiwala',to:'Nugegoda',fare:'TT$ 310',status:'completed',date:'Yesterday 15:20'},
+  {name:'Kamal Perera',from:'Port of Spain',to:'Piarco Airport',fare:'TT$ 165',status:'completed',date:'Today 09:12'},
+  {name:'Dilani Silva',from:'Arima',to:'Chaguanas',fare:'TT$ 260',status:'completed',date:'Today 08:45'},
+  {name:'Ruwani Mendis',from:'Claxton Bay',to:'Marabella',fare:'TT$ 850',status:'cancelled',date:'Yesterday 18:30'},
+  {name:'Priya Fernando',from:'Curepe',to:'Tunapuna',fare:'TT$ 65',status:'completed',date:'Yesterday 15:20'},
 ] as const
 
 export default function DriverApp() {
