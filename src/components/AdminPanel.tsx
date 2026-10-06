@@ -869,9 +869,101 @@ function SettingsPanel() {
   )
 }
 
+const adminInput = 'w-full px-4 py-3.5 rounded-xl border-2 border-gray-100 bg-gray-50 outline-none text-sm font-600 text-gray-900 placeholder-gray-300 focus:border-[#E11D48] focus:bg-white transition-colors'
+
+function AdminLogin({ onAuth }: { onAuth: () => void }) {
+  const [email, setEmail] = useState('amara@pickuptt.com')
+  const [password, setPassword] = useState('admin123')
+  const [remember, setRemember] = useState(true)
+  const [error, setError] = useState('')
+
+  const submit = () => {
+    if (!email.trim() || !password) { setError('Enter your email and password.'); return }
+    if (!email.includes('@')) { setError('Enter a valid email address.'); return }
+    setError('')
+    onAuth()
+  }
+
+  return (
+    <div className="flex flex-col bg-white relative" style={{ height: 680 }}>
+      {/* Hero */}
+      <div className="shrink-0 px-6 pt-8 pb-6 text-white relative overflow-hidden" style={{ background: '#111' }}>
+        <div className="flex items-center gap-2.5 mb-5">
+          <img src={logo} alt="Pickuptt" className="w-8 h-8 rounded-lg object-cover" />
+          <span className="font-800 text-sm tracking-tight">Pickuptt Admin</span>
+          <span className="ml-auto w-2 h-2 rounded-full" style={{ background: RED }} />
+        </div>
+        <h1 className="text-2xl font-800 tracking-[-0.03em] leading-tight mb-1.5">Operations console</h1>
+        <p className="text-xs text-gray-400 font-500">Sign in to manage rides, drivers and payouts.</p>
+        <div className="absolute left-0 bottom-0 h-1 w-24" style={{ background: RED }} />
+      </div>
+
+      {/* Form */}
+      <div className="flex-1 overflow-y-auto px-6 pt-6 pb-6 space-y-4">
+        <div>
+          <p className="text-[11px] font-700 uppercase tracking-wider text-gray-400 mb-1.5">Work email</p>
+          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="you@pickuptt.com"
+            type="email" className={adminInput} autoComplete="email" />
+        </div>
+
+        <div>
+          <p className="text-[11px] font-700 uppercase tracking-wider text-gray-400 mb-1.5">Password</p>
+          <input value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters"
+            type="password" className={adminInput} autoComplete="current-password" />
+        </div>
+
+        <div className="flex items-center justify-between">
+          <button onClick={() => setRemember(r => !r)} className="flex items-center gap-2">
+            <span className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${remember ? 'bg-[#E11D48] border-[#E11D48]' : 'border-gray-300 bg-white'}`}>
+              {remember && <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+            </span>
+            <span className="text-xs font-600 text-gray-600">Keep me signed in</span>
+          </button>
+          <button onClick={() => setError('Contact IT admin to reset your password.')}
+            className="text-xs font-700" style={{ color: RED }}>Forgot password?</button>
+        </div>
+
+        {error && (
+          <p className="text-xs font-600 px-3 py-2.5 rounded-lg bg-red-50" style={{ color: RED }}>{error}</p>
+        )}
+
+        <button onClick={submit}
+          className="w-full py-4 rounded-full font-800 text-base text-white transition-all active:scale-[0.98] hover:opacity-90"
+          style={{ background: RED }}>
+          Sign in
+        </button>
+
+        <div className="flex items-center gap-3 pt-1">
+          <div className="flex-1 h-px bg-gray-100" />
+          <span className="text-[10px] font-700 text-gray-300 uppercase tracking-wider">Secure access</span>
+          <div className="flex-1 h-px bg-gray-100" />
+        </div>
+
+        <div className="flex items-center justify-center gap-1.5 text-gray-400">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/></svg>
+          <span className="text-[11px] font-600">2-factor auth enforced · Demo credentials pre-filled</span>
+        </div>
+
+        <p className="text-[11px] text-gray-300 font-500 text-center">© 2026 Pickuptt Operations</p>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminPanel() {
+  const [authed, setAuthed] = useState(false)
   const [section, setSection] = useState<AdminSection>('dashboard')
   const [profile, setProfile] = useState(false)
+
+  if (!authed) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 flex flex-col items-center py-10">
+        <PhoneFrame>
+          <AdminLogin onAuth={() => setAuthed(true)} />
+        </PhoneFrame>
+      </div>
+    )
+  }
 
   const NAV: { key: AdminSection; label: string }[] = [
     { key: 'dashboard', label: 'Dashboard' },
@@ -957,7 +1049,7 @@ export default function AdminPanel() {
             </div>
             <div className="flex gap-3">
               <button onClick={() => { setProfile(false); setSection('settings') }} className="flex-1 py-3.5 rounded-full font-700 text-sm text-gray-700 bg-gray-100">Settings</button>
-              <button onClick={() => setProfile(false)} className="flex-1 py-3.5 rounded-full font-700 text-sm text-[#E11D48] bg-red-50">Log out</button>
+              <button onClick={() => { setProfile(false); setAuthed(false) }} className="flex-1 py-3.5 rounded-full font-700 text-sm text-[#E11D48] bg-red-50">Log out</button>
             </div>
           </Sheet>
         </div>

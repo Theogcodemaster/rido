@@ -3,6 +3,7 @@ import { Avatar, Star, Sheet, Toggle, Row } from './shared-ui'
 import RideMapView from './RideMapView'
 import { POS_CENTER, carsAround, formatDistance, formatDuration, type Place } from '../lib/places'
 import { fetchRoute, pointAt, type RouteResult } from '../lib/route'
+import logo from '../assets/logo.jpeg'
 
 type Screen = 'home' | 'request' | 'active' | 'earnings' | 'history'
 
@@ -650,8 +651,152 @@ const TRIPS = [
   {name:'Priya Fernando',from:'Curepe',to:'Tunapuna',fare:'TT$ 65',status:'completed',date:'Yesterday 15:20'},
 ] as const
 
+const VEHICLE_TYPES = ['Sedan', 'SUV', 'Bike', 'Van']
+const authInput = 'w-full px-4 py-3.5 rounded-xl border-2 border-gray-100 bg-gray-50 outline-none text-sm font-600 text-gray-900 placeholder-gray-300 focus:border-[#E11D48] focus:bg-white transition-colors'
+
+function AuthField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-[11px] font-700 uppercase tracking-wider text-gray-400 mb-1.5">{label}</p>
+      {children}
+    </div>
+  )
+}
+
+function DriverAuth({ onAuth }: { onAuth: () => void }) {
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
+  const [email, setEmail] = useState('keston@example.com')
+  const [password, setPassword] = useState('password123')
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [vehicle, setVehicle] = useState('')
+  const [error, setError] = useState('')
+
+  const submit = () => {
+    if (!email.trim() || !password) { setError('Enter your email and password to continue.'); return }
+    if (email.includes('@') === false) { setError('Enter a valid email address.'); return }
+    if (mode === 'signup') {
+      if (!name.trim() || !phone.trim()) { setError('Fill in your name and phone number.'); return }
+      if (!vehicle) { setError('Select the vehicle you drive.'); return }
+      if (password.length < 6) { setError('Password must be at least 6 characters.'); return }
+    }
+    setError('')
+    onAuth()
+  }
+
+  return (
+    <div className="flex flex-col bg-white relative" style={{ height: 680 }}>
+      {/* Hero */}
+      <div className="shrink-0 px-6 pt-7 pb-6 text-white" style={{ background: '#111' }}>
+        <div className="flex items-center gap-2.5 mb-5">
+          <img src={logo} alt="Pickuptt" className="w-8 h-8 rounded-lg object-cover" />
+          <span className="font-800 text-sm tracking-tight">Pickuptt Driver</span>
+          <span className="ml-auto w-2 h-2 rounded-full" style={{ background: RED }} />
+        </div>
+        <h1 className="text-2xl font-800 tracking-[-0.03em] leading-tight mb-1.5">
+          {mode === 'signin' ? 'Back on the road.' : 'Drive with Pickuptt.'}
+        </h1>
+        <p className="text-xs text-gray-400 font-500">
+          {mode === 'signin' ? 'Sign in to start accepting trips.' : 'Apply in minutes — get approved in days.'}
+        </p>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-6 pt-5 pb-6 space-y-4">
+        {/* Mode tabs */}
+        <div className="flex bg-gray-100 rounded-full p-1 mb-1">
+          {(['signin', 'signup'] as const).map(m => (
+            <button key={m} onClick={() => { setMode(m); setError('') }}
+              className={`flex-1 py-2.5 rounded-full text-xs font-700 transition-all ${mode === m ? 'bg-white text-[#E11D48] shadow-sm' : 'text-gray-500'}`}>
+              {m === 'signin' ? 'Sign in' : 'Sign up'}
+            </button>
+          ))}
+        </div>
+
+        {mode === 'signup' && (
+          <AuthField label="Full name">
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Keston Joseph"
+              className={authInput} autoComplete="name" />
+          </AuthField>
+        )}
+
+        {mode === 'signup' && (
+          <AuthField label="Phone">
+            <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="868 555 0143"
+              inputMode="tel" className={authInput} autoComplete="tel" />
+          </AuthField>
+        )}
+
+        <AuthField label="Email">
+          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com"
+            type="email" className={authInput} autoComplete="email" />
+        </AuthField>
+
+        <AuthField label="Password">
+          <input value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters"
+            type="password" className={authInput} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} />
+        </AuthField>
+
+        {mode === 'signup' && (
+          <div>
+            <p className="text-[11px] font-700 uppercase tracking-wider text-gray-400 mb-1.5">Vehicle</p>
+            <div className="flex gap-2">
+              {VEHICLE_TYPES.map(v => (
+                <button key={v} onClick={() => setVehicle(v)}
+                  className={`flex-1 py-2.5 rounded-full text-xs font-700 border-2 transition-all ${vehicle === v ? 'border-[#E11D48] text-[#E11D48] bg-red-50' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}>
+                  {v}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {mode === 'signin' && (
+          <div className="flex justify-end -mt-1">
+            <button onClick={() => setError('Password reset link sent to your email.')}
+              className="text-xs font-700" style={{ color: RED }}>Forgot password?</button>
+          </div>
+        )}
+
+        {error && (
+          <p className="text-xs font-600 px-3 py-2.5 rounded-lg bg-red-50" style={{ color: RED }}>{error}</p>
+        )}
+
+        <button onClick={submit}
+          className="w-full py-4 rounded-full font-800 text-base text-white bg-[#111] hover:bg-black active:scale-[0.98] transition-all">
+          {mode === 'signin' ? 'Sign in' : 'Create account'}
+        </button>
+
+        <p className="text-center text-xs text-gray-400 font-500 pt-1">
+          {mode === 'signin' ? 'New driver? ' : 'Already driving? '}
+          <button onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError('') }}
+            className="font-700" style={{ color: RED }}>
+            {mode === 'signin' ? 'Create account' : 'Sign in'}
+          </button>
+        </p>
+
+        {mode === 'signup' && (
+          <p className="text-[11px] text-gray-300 font-500 text-center leading-relaxed">
+            By creating an account you agree to the Driver Agreement, background checks and vehicle inspections.
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function DriverApp() {
+  const [authed, setAuthed] = useState(false)
   const [screen, setScreen] = useState<Screen>('home')
+
+  if (!authed) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 flex flex-col items-center py-10">
+        <PhoneFrame>
+          <DriverAuth onAuth={() => setAuthed(true)} />
+        </PhoneFrame>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 flex flex-col items-center py-10">
@@ -662,6 +807,10 @@ export default function DriverApp() {
             {s}
           </button>
         ))}
+        <button onClick={() => setAuthed(false)}
+          className="px-3 py-1 rounded-full text-xs font-600 bg-white text-gray-400 hover:bg-gray-50 border border-dashed border-gray-300 transition-all">
+          sign out
+        </button>
       </div>
       <PhoneFrame>
         {screen === 'home' && <DriverHome onRequest={() => setScreen('request')} onEarnings={() => setScreen('earnings')} onHistory={() => setScreen('history')}/>}
