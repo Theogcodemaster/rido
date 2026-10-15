@@ -13,6 +13,7 @@ import {
   type Place,
 } from "../lib/places"
 import { fetchRoute, type RouteResult } from "../lib/route"
+import { useCustomer } from "./customer-store"
 
 const SAVED_ICONS: Record<string, React.ReactNode> = {
   home: (
@@ -81,10 +82,11 @@ export function RideScreen({
   dest: Place | null
   setDest: (p: Place | null) => void
 }) {
-  const [timing, setTiming] = useState<"now" | "later">("now")
+  const { schedule, setSchedule } = useCustomer()
+  const [timing, setTiming] = useState<"now" | "later">(schedule !== "Leave now" ? "later" : "now")
   const [sheet, setSheet] = useState<null | "schedule" | "promo" | "map">(null)
   const [searchMode, setSearchMode] = useState<null | "pickup" | "dest">(null)
-  const [whenLabel, setWhenLabel] = useState("Leave now")
+  const [whenLabel, setWhenLabel] = useState(schedule)
   const [promo, setPromo] = useState("")
   const [appliedPromo, setAppliedPromo] = useState<string | null>(null)
   const [toast, setToast] = useState("")
@@ -537,6 +539,7 @@ export function RideScreen({
                 else {
                   setTiming("now")
                   setWhenLabel("Leave now")
+                  setSchedule("Leave now")
                 }
               }}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[13px] font-bold transition-all ${
@@ -650,6 +653,7 @@ export function RideScreen({
               key={t}
               onClick={() => {
                 setWhenLabel(t)
+                setSchedule(t)
                 setTiming(t === "Leave now" ? "now" : "later")
                 setSheet(null)
               }}

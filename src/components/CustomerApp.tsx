@@ -1,9 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MapCanvas, Avatar, Star, Sheet, Toggle, Row, Route } from './shared-ui'
 import { RideScreen } from './RideScreen'
 import RideMapView from './RideMapView'
-import { POS_CENTER, carsAround, formatDistance, formatDuration, type Place } from '../lib/places'
+import { POS_CENTER, carsAround, formatDistance, formatDuration, getRecents, type Place } from '../lib/places'
 import { fetchRoute, pointAt, type RouteResult } from '../lib/route'
+import {
+  CustomerProvider,
+  useCustomer,
+  initialsOf,
+  firstName,
+  promoDiscount,
+  shortLabel,
+} from './customer-store'
 import logo from '../assets/logo.jpeg'
 
 type Screen = 'splash' | 'phone' | 'otp' | 'home' | 'ride' | 'vehicle' | 'tracking' | 'complete' | 'package' | 'profile' | 'service'
@@ -32,6 +40,13 @@ function PhoneFrame({ children }: { children: React.ReactNode }) {
 }
 
 function SplashScreen({ onNext }: { onNext: () => void }) {
+  // Splash behaves like a real launch screen: auto-advances, but the button still works.
+  useEffect(() => {
+    const t = setTimeout(onNext, 2600)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   return (
     <div className="flex flex-col items-center justify-center relative" style={{height: 680, background: RED}}>
       <div className="text-center anim-fade">
@@ -40,6 +55,7 @@ function SplashScreen({ onNext }: { onNext: () => void }) {
         </div>
         <h1 className="text-4xl font-800 text-white mb-1 tracking-[-0.03em]">Pickuptt</h1>
         <p className="text-white/70 text-sm">Your city, on demand</p>
+        <div className="mt-8 w-10 h-10 border-2 border-white/30 border-t-white rounded-full mx-auto animate-spin"/>
       </div>
       <button onClick={onNext} className="absolute bottom-12 left-6 right-6 bg-white text-[#E11D48] font-700 py-4 rounded-2xl text-base shadow-lg active:scale-[0.98] transition-transform">
         Get Started
@@ -48,31 +64,50 @@ function SplashScreen({ onNext }: { onNext: () => void }) {
   )
 }
 
-function PhoneScreen({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
-  const [phone, setPhone] = useState('')
+function PhoneScreen({ onNext, onBack }: { onNext: (phone: string) => void; onBack: () => void }) {
+  const [digits, setDigits] = useState('')
   const [sheet, setSheet] = useState<null | 'terms' | 'privacy'>(null)
+  const valid = digits.length >= 7
+  const formatted =
+    digits.length > 6
+      ? `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`
+      : digits.length > 3
+        ? `${digits.slice(0, 3)} ${digits.slice(3)}`
+        : digits
+
   return (
     <div className="flex flex-col p-6 relative" style={{height: 680}}>
       <button onClick={onBack} className="mb-8"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M5 12l7-7M5 12l7 7" stroke="#111" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
       <h2 className="text-3xl font-800 text-gray-900 mb-2 leading-tight">Enter your<br/>phone number</h2>
       <p className="text-gray-400 text-sm mb-8">We'll send you a verification code</p>
-      <div className="flex gap-3 items-center border-2 border-gray-100 rounded-2xl px-4 py-3 mb-4 focus-within:border-[#E11D48] transition-colors">
+      <div className={`flex gap-3 items-center border-2 rounded-2xl px-4 py-3 mb-2 transition-colors ${valid ? 'border-gray-100 focus-within:border-[#E11D48]' : 'border-gray-100 focus-within:border-[#E11D48]'}`}>
         <span className="text-gray-500 font-600 text-base">+1</span>
         <div className="w-px h-6 bg-gray-200"/>
         <input
           type="tel"
-          value={phone}
-          onChange={e => setPhone(e.target.value)}
+          inputMode="numeric"
+          value={formatted}
+          onChange={e => setDigits(e.target.value.replace(/\D/g, '').slice(0, 10))}
+          onKeyDown={e => { if (e.key === 'Enter' && valid) onNext(`+1 ${formatted}`) }}
           placeholder="868 123 4567"
+          autoFocus
           className="flex-1 outline-none text-gray-900 font-500 text-base bg-transparent placeholder-gray-300"
         />
+        {valid && (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 7" stroke="#16A34A" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        )}
       </div>
-      <p className="text-xs text-gray-400 mb-auto">By continuing, you agree to our{' '}
+      <p className="text-xs text-gray-400 mb-auto mt-2">{valid ? 'Standard message rates may apply.' : `Enter at least 7 digits (${digits.length}/7).`}</p>
+      <p className="text-xs text-gray-400 mb-4">By continuing, you agree to our{' '}
         <button onClick={() => setSheet('terms')} className="text-[#E11D48] font-500 underline underline-offset-2">Terms</button>
         {' '}and{' '}
         <button onClick={() => setSheet('privacy')} className="text-[#E11D48] font-500 underline underline-offset-2">Privacy Policy</button>
       </p>
-      <button onClick={onNext} className="w-full py-4 rounded-2xl font-700 text-base text-white" style={{background: RED}}>
+      <button
+        onClick={() => onNext(`+1 ${formatted}`)}
+        disabled={!valid}
+        className={`w-full py-4 rounded-2xl font-700 text-base text-white transition-all ${valid ? 'active:scale-[0.98]' : 'opacity-40 cursor-not-allowed'}`}
+        style={{background: RED}}>
         Continue
       </button>
 
@@ -100,9 +135,11 @@ function PhoneScreen({ onNext, onBack }: { onNext: () => void; onBack: () => voi
   )
 }
 
-function OTPScreen({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
-  const [otp, setOtp] = useState(['', '', '', '', '', ''])
+function OTPScreen({ phone, onNext, onBack }: { phone: string; onNext: () => void; onBack: () => void }) {
+  const [code, setCode] = useState('')
+  const [error, setError] = useState('')
   const [resendIn, setResendIn] = useState(45)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (resendIn <= 0) return
@@ -110,37 +147,79 @@ function OTPScreen({ onNext, onBack }: { onNext: () => void; onBack: () => void 
     return () => clearTimeout(t)
   }, [resendIn])
 
-  const fillDigit = (i: number) => {
-    setOtp(prev => {
-      const next = [...prev]
-      const digit = String((Number(next[i] || 0) + 1) % 10)
-      next[i] = digit
-      return next
-    })
+  // Auto-verify as soon as the 6th digit lands.
+  useEffect(() => {
+    if (code.length < 6) return
+    const t = setTimeout(onNext, 400)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code])
+
+  const update = (raw: string) => {
+    const digits = raw.replace(/\D/g, '').slice(0, 6)
+    setCode(digits)
+    if (digits.length < 6) setError('')
+  }
+
+  const verify = () => {
+    if (code.length < 6) {
+      setError('Enter all 6 digits to continue')
+      inputRef.current?.focus()
+      return
+    }
+    onNext()
   }
 
   return (
     <div className="flex flex-col p-6 relative" style={{height: 680}}>
       <button onClick={onBack} className="mb-8"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M5 12l7-7M5 12l7 7" stroke="#111" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
       <h2 className="text-3xl font-800 text-gray-900 mb-2 leading-tight">Verification<br/>Code</h2>
-      <p className="text-gray-400 text-sm mb-8">Sent to +1 868 123 4567</p>
-      <div className="flex gap-2 mb-6">
-        {otp.map((d, i) => (
-          <button key={i} onClick={() => fillDigit(i)}
-            className={`flex-1 h-14 border-2 rounded-xl flex items-center justify-center text-xl font-700 transition-colors ${d ? 'border-[#E11D48] text-gray-900 bg-red-50/40' : 'border-gray-100 text-gray-300 hover:border-gray-300'}`}>
-            {d || '·'}
-          </button>
-        ))}
+      <p className="text-gray-400 text-sm mb-6">Sent to {phone || '+1 868 123 4567'}</p>
+
+      <div className="relative mb-3" onClick={() => inputRef.current?.focus()}>
+        <input
+          ref={inputRef}
+          value={code}
+          onChange={e => update(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') verify() }}
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          aria-label="6 digit verification code"
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+        />
+        <div className="flex gap-2 pointer-events-none">
+          {Array.from({ length: 6 }).map((_, i) => {
+            const d = code[i]
+            const active = i === code.length
+            return (
+              <div key={i}
+                className={`flex-1 h-14 border-2 rounded-xl flex items-center justify-center text-xl font-700 transition-all ${d ? 'border-[#E11D48] text-gray-900 bg-red-50/40' : active ? 'border-gray-400 bg-gray-50' : 'border-gray-100 text-gray-300'}`}>
+                {d ?? (active ? '' : '·')}
+              </div>
+            )
+          })}
+        </div>
       </div>
+
+      {error ? (
+        <p className="text-xs text-[#E11D48] font-600 mb-3 anim-fade">{error}</p>
+      ) : (
+        <p className="text-xs text-gray-400 mb-3">Demo build — type any 6 digits to continue.</p>
+      )}
+
       <p className="text-xs text-gray-400 mb-auto">
         {resendIn > 0 ? (
           <>Resend code in <span className="text-[#E11D48] font-600">00:{String(resendIn).padStart(2, '0')}</span></>
         ) : (
-          <button onClick={() => setResendIn(45)} className="text-[#E11D48] font-700 underline underline-offset-2">Resend code</button>
+          <button onClick={() => { setResendIn(45); setError('') }} className="text-[#E11D48] font-700 underline underline-offset-2">Resend code</button>
         )}
       </p>
-      <button onClick={onNext} className="w-full py-4 rounded-2xl font-700 text-base text-white" style={{background: RED}}>
-        Verify
+      <button
+        onClick={verify}
+        disabled={code.length < 6}
+        className={`w-full py-4 rounded-2xl font-700 text-base text-white transition-all ${code.length < 6 ? 'opacity-40 cursor-not-allowed' : 'active:scale-[0.98]'}`}
+        style={{background: RED}}>
+        {code.length === 6 ? 'Verify' : `Verify (${code.length}/6)`}
       </button>
     </div>
   )
@@ -188,17 +267,31 @@ const SERVICE_BLURBS: Record<string, string> = {
   'Errands': 'Someone to line, shop and deliver for you. Pay only for the errand time you book.',
 }
 
-function HomeScreen({ onRide, onPackage, onProfile, onService }: { onRide: () => void; onPackage: () => void; onProfile: () => void; onService: (name: string) => void }) {
+function scheduleShort(label: string): string {
+  return label
+    .replace('Leave now', 'Now')
+    .replace('In ', '+')
+    .replace(' minutes', ' min')
+    .replace(' minute', ' min')
+    .replace(' hour', ' hr')
+    .replace('Tomorrow · ', 'Tomorrow ')
+}
+
+function HomeScreen({ onRide, onPackage, onProfile, onService }: { onRide: (place?: Place) => void; onPackage: () => void; onProfile: () => void; onService: (name: string) => void }) {
+  const { trips, wallet, schedule, setSchedule, profile } = useCustomer()
   const [sheet, setSheet] = useState<null | 'schedule' | 'all' | 'activity'>(null)
-  const [when, setWhen] = useState('Now')
+  const [recents, setRecents] = useState<Place[]>(() => getRecents())
 
   const suggestions = SUGGESTIONS.map(l => ({ label: l }))
 
-  const activity = [
-    { title: 'Ride to Piarco Int’l', meta: 'Sep 30 · 15 min', fare: 'TT$ 45.00', status: 'Completed' },
-    { title: 'Package to Chaguanas', meta: 'Sep 28 · 18 min', fare: 'TT$ 280.00', status: 'Completed' },
-    { title: 'Ride to MovieTowne', meta: 'Sep 26 · 9 min', fare: 'TT$ 32.00', status: 'Cancelled' },
-  ]
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  const whenShort = schedule === 'Leave now' ? 'Now' : scheduleShort(schedule)
+
+  // Refresh recents whenever we come back to home (a trip may have added one).
+  useEffect(() => {
+    if (sheet !== 'schedule' && sheet !== 'all' && sheet !== 'activity') setRecents(getRecents())
+  }, [sheet])
 
   return (
     <div className="flex flex-col bg-white relative" style={{height: 680}}>
@@ -206,17 +299,23 @@ function HomeScreen({ onRide, onPackage, onProfile, onService }: { onRide: () =>
       <div className="px-5 pt-4 pb-4 flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-800 text-gray-900 tracking-[-0.03em]">Pickuptt<span style={{color: RED}}>.</span></h2>
-          <p className="text-xs text-gray-400 font-500 mt-0.5">Good morning, Kamal · Port of Spain</p>
+          <p className="text-xs text-gray-400 font-500 mt-0.5">{greeting}, {firstName(profile.name)} · Port of Spain</p>
         </div>
-        <button onClick={onProfile} className="w-10 h-10 rounded-full border border-gray-200 shadow-sm active:scale-95 transition-transform">
-          <Avatar initials="KP" className="w-full h-full rounded-full text-[11px]" />
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="px-3 py-1.5 rounded-full bg-gray-50 border border-gray-100 text-right">
+            <p className="text-[9px] font-700 text-gray-400 uppercase tracking-wider leading-none mb-0.5">Wallet</p>
+            <p className="text-xs font-800 text-gray-900 leading-none">TT$ {wallet.toLocaleString()}</p>
+          </div>
+          <button onClick={onProfile} className="w-10 h-10 rounded-full border border-gray-200 shadow-sm active:scale-95 transition-transform overflow-hidden">
+            <Avatar initials={initialsOf(profile.name)} className="w-full h-full rounded-full text-[11px]" />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto pb-4">
         {/* Main Services */}
         <div className="px-5 mb-6 flex gap-3">
-          <button onClick={onRide} className="flex-1 bg-red-50 border border-red-100 rounded-3xl p-5 flex flex-col justify-between items-start h-32 hover:border-red-200 hover:shadow-md transition-all">
+          <button onClick={() => onRide()} className="flex-1 bg-red-50 border border-red-100 rounded-3xl p-5 flex flex-col justify-between items-start h-32 hover:border-red-200 hover:shadow-md transition-all">
             <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-red-100 flex items-center justify-center mb-2" style={{color: RED}}>
                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg>
             </div>
@@ -232,14 +331,14 @@ function HomeScreen({ onRide, onPackage, onProfile, onService }: { onRide: () =>
 
         {/* Where to? */}
         <div className="px-5 mb-6">
-          <div className="bg-gray-100 rounded-full flex items-center px-5 py-4 gap-3 shadow-sm cursor-text" onClick={onRide}>
+          <div className="bg-gray-100 rounded-full flex items-center px-5 py-4 gap-3 shadow-sm cursor-text" onClick={() => onRide()}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke={RED} strokeWidth="2.5" strokeLinecap="round"/></svg>
             <span className="text-gray-900 font-700 text-lg flex-1">Where to?</span>
             <button
               onClick={e => { e.stopPropagation(); setSheet('schedule') }}
               className="bg-white rounded-full p-2 shadow-sm flex items-center gap-2"
             >
-               <span className="text-xs font-700 px-2 py-1 rounded-full" style={{background: '#FDE7EC', color: RED}}>{when}</span>
+               <span className="text-xs font-700 px-2 py-1 rounded-full" style={{background: '#FDE7EC', color: RED}}>{whenShort}</span>
                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#111" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </button>
           </div>
@@ -267,24 +366,18 @@ function HomeScreen({ onRide, onPackage, onProfile, onService }: { onRide: () =>
         <div className="px-5">
            <h3 className="font-800 text-lg text-gray-900 mb-4">Recent</h3>
            <div className="bg-gray-50 border border-gray-100 rounded-3xl p-4 space-y-4">
-              <button onClick={onRide} className="w-full flex items-center gap-4 cursor-pointer group text-left">
-                 <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm group-hover:shadow transition-all">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0112 2a8 8 0 018 8.2c0 7.3-8 11.8-8 11.8z" stroke={RED} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="10" r="3" stroke={RED} strokeWidth="2.5"/></svg>
-                 </div>
-                 <div className="flex-1 border-b border-gray-100 pb-4">
-                    <h4 className="font-700 text-gray-900">Piarco International Airport</h4>
-                    <p className="text-xs text-gray-400 font-500 mt-0.5">Golden Grove Rd, Piarco</p>
-                 </div>
-              </button>
-              <button onClick={onRide} className="w-full flex items-center gap-4 cursor-pointer group text-left">
-                 <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm group-hover:shadow transition-all">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0112 2a8 8 0 018 8.2c0 7.3-8 11.8-8 11.8z" stroke={RED} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="10" r="3" stroke={RED} strokeWidth="2.5"/></svg>
-                 </div>
-                 <div className="flex-1">
-                    <h4 className="font-700 text-gray-900">MovieTowne Port of Spain</h4>
-                    <p className="text-xs text-gray-400 font-500 mt-0.5">Audrey Jeffers Hwy, Port of Spain</p>
-                 </div>
-              </button>
+              {recents.slice(0, 3).map((r, i) => (
+                <button key={r.id} onClick={() => onRide(r)} className="w-full flex items-center gap-4 cursor-pointer group text-left">
+                   <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm group-hover:shadow transition-all shrink-0">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0112 2a8 8 0 018 8.2c0 7.3-8 11.8-8 11.8z" stroke={RED} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="10" r="3" stroke={RED} strokeWidth="2.5"/></svg>
+                   </div>
+                   <div className={`flex-1 min-w-0 ${i < Math.min(recents.length, 3) - 1 ? 'border-b border-gray-200 pb-4' : ''}`}>
+                      <h4 className="font-700 text-gray-900 truncate">{r.label}</h4>
+                      <p className="text-xs text-gray-400 font-500 mt-0.5 truncate">{r.sub ?? `${r.lat.toFixed(4)}, ${r.lng.toFixed(4)}`}</p>
+                   </div>
+                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="shrink-0 text-gray-300 group-hover:text-gray-500"><path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>
+                </button>
+              ))}
            </div>
         </div>
       </div>
@@ -313,13 +406,18 @@ function HomeScreen({ onRide, onPackage, onProfile, onService }: { onRide: () =>
       {/* Schedule sheet */}
       <Sheet open={sheet === 'schedule'} onClose={() => setSheet(null)} title="When do you leave?">
         <div className="space-y-2 mb-4">
-          {['Now', 'In 15 min', 'In 30 min', 'In 1 hour', 'Tomorrow 8:00 AM'].map(t => (
-            <button key={t} onClick={() => { setWhen(t === 'Now' ? 'Now' : t.replace('In ', '+')); setSheet(null) }}
-              className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border-2 transition-all ${when === (t === 'Now' ? 'Now' : t.replace('In ', '+')) ? 'border-[#111] bg-gray-50' : 'border-gray-100 hover:bg-gray-50'}`}>
+          {['Leave now', 'In 15 minutes', 'In 30 minutes', 'In 1 hour', 'Tomorrow · 8:00 AM'].map(t => (
+            <button key={t} onClick={() => { setSchedule(t); setSheet(null) }}
+              className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border-2 transition-all ${schedule === t ? 'border-[#111] bg-gray-50' : 'border-gray-100 hover:bg-gray-50'}`}>
               <span className="text-sm font-700 text-gray-900">{t}</span>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 7.5V12l3 2m6-2.5a9 9 0 11-18 0 9 9 0 0118 0z" stroke="#111" strokeWidth="2" strokeLinecap="round"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                {schedule === t
+                  ? <path d="M5 12l5 5L20 7" stroke="#111" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  : <path d="M12 7.5V12l3 2m6-2.5a9 9 0 11-18 0 9 9 0 0118 0z" stroke="#111" strokeWidth="2" strokeLinecap="round"/>}
+              </svg>
             </button>
           ))}
+          <p className="text-xs text-gray-400 font-500 pt-1">Scheduled rides are matched with a driver closer to the departure time.</p>
         </div>
       </Sheet>
 
@@ -344,18 +442,27 @@ function HomeScreen({ onRide, onPackage, onProfile, onService }: { onRide: () =>
       {/* Activity sheet */}
       <Sheet open={sheet === 'activity'} onClose={() => setSheet(null)} title="Your activity">
         <div className="space-y-3">
-          {activity.map(a => (
-            <div key={a.title} className="bg-gray-50 rounded-2xl p-4">
+          {trips.length === 0 && (
+            <p className="text-sm text-gray-400 font-500 text-center py-6">No trips yet. Your rides and deliveries will show up here.</p>
+          )}
+          {trips.map(a => (
+            <div key={a.id} className="bg-gray-50 rounded-2xl p-4">
               <div className="flex justify-between items-start mb-1">
                 <p className="font-700 text-sm text-gray-900">{a.title}</p>
                 <span className={`text-[10px] font-700 px-2 py-0.5 rounded-full ${a.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>{a.status}</span>
               </div>
               <div className="flex justify-between items-center">
                 <p className="text-xs text-gray-400 font-500">{a.meta}</p>
-                <p className="text-sm font-800 text-gray-900">{a.fare}</p>
+                <p className="text-sm font-800 text-gray-900">TT$ {a.fare.toFixed(2)}</p>
               </div>
             </div>
           ))}
+          <div className="flex justify-between items-center pt-1">
+            <p className="text-xs font-700 text-gray-500 uppercase tracking-wider">Completed spend</p>
+            <p className="text-sm font-800" style={{color: RED}}>
+              TT$ {trips.filter(t => t.status === 'Completed').reduce((s, t) => s + t.fare, 0).toFixed(2)}
+            </p>
+          </div>
         </div>
       </Sheet>
     </div>
@@ -365,10 +472,11 @@ function HomeScreen({ onRide, onPackage, onProfile, onService }: { onRide: () =>
 const SERVICE_WHEN = ['Now', 'In 1 hour', 'Tomorrow']
 
 function ServiceScreen({ service, onBack }: { service: string; onBack: () => void }) {
+  const { addTrip, schedule } = useCustomer()
   const [when, setWhen] = useState('Now')
   const [priority, setPriority] = useState(false)
   const [route, setRoute] = useState<RouteResult | null>(null)
-  const [confirming, setConfirming] = useState(false)
+  const [stage, setStage] = useState<'form' | 'searching' | 'matched' | 'booked'>('form')
 
   useEffect(() => {
     const ctrl = new AbortController()
@@ -376,11 +484,46 @@ function ServiceScreen({ service, onBack }: { service: string; onBack: () => voi
     return () => ctrl.abort()
   }, [])
 
+  // Search → matched provider is a timed simulation.
+  useEffect(() => {
+    if (stage !== 'searching') return
+    const t = setTimeout(() => setStage('matched'), 1900)
+    return () => clearTimeout(t)
+  }, [stage])
+
   const km = route ? route.distanceM / 1000 : 0
   const base = SERVICE_BASE[service] ?? 60
   const distanceFee = Math.max(6, Math.round(km * 4))
   const total = base + distanceFee + (priority ? 40 : 0)
   const blurb = SERVICE_BLURBS[service] ?? 'Book a trusted provider near you. Upfront pricing, live tracking and insurance included.'
+
+  const PROVIDER: Record<string, { name: string; initials: string; role: string; eta: string }> = {
+    'Cleaning': { name: 'Anisa Joseph', initials: 'AJ', role: 'Vetted cleaner · supplies included', eta: '25 min' },
+    'Towing': { name: 'Dev Rambachan', initials: 'DR', role: 'Flatbed operator · TDT 4412', eta: '18 min' },
+    'Medi Boy': { name: 'Nurse Alana', initials: 'NA', role: 'Certified medic · Medi Boy 042', eta: '12 min' },
+    'Bike': { name: 'Jevon Reyes', initials: 'JR', role: 'Bike courier · TDM 7729', eta: '7 min' },
+    'Bike Taxi': { name: 'Jevon Reyes', initials: 'JR', role: 'Bike taxi · TDM 7729', eta: '7 min' },
+    'Ambulance': { name: 'Station 12 Crew', initials: 'S12', role: 'Certified attendants · Unit 12', eta: '14 min' },
+    'Repairs': { name: 'Marcus Grant', initials: 'MG', role: 'Verified technician · ID 2214', eta: '40 min' },
+    'Errands': { name: 'Shanice Ali', initials: 'SA', role: 'Errand runner · ID 1088', eta: '15 min' },
+    'Ride': { name: 'Kevin Mohammed', initials: 'KM', role: 'Pickuptt X · TPN 7084', eta: '4 min' },
+    'Package & Cargo': { name: 'Rajesh Deo', initials: 'RD', role: 'Bike courier · TDR 5163', eta: '6 min' },
+  }
+  const provider = PROVIDER[service] ?? PROVIDER['Ride']!
+
+  const bookService = () => {
+    setStage('searching')
+  }
+
+  const confirmBooking = () => {
+    addTrip({
+      title: `${service} booking`,
+      meta: `Today · ${when}${route ? ` · ${formatDistance(route.distanceM)}` : ''}`,
+      fare: total,
+      status: 'Completed',
+    })
+    setStage('booked')
+  }
 
   return (
     <div className="flex flex-col bg-white relative" style={{height: 680}}>
@@ -467,27 +610,90 @@ function ServiceScreen({ service, onBack }: { service: string; onBack: () => voi
 
       {/* Footer */}
       <div className="shrink-0 px-5 pt-3 pb-4 border-t border-gray-100 bg-white">
-        <button onClick={() => setConfirming(true)}
+        <button onClick={bookService}
           className="w-full py-4 rounded-full font-800 text-base text-white bg-[#111] hover:bg-black active:scale-[0.98] transition-all">
           Book {service} · TT$ {total.toFixed(2)}
         </button>
+        <p className="text-[11px] text-gray-400 font-500 text-center mt-2">Free cancellation within 2 minutes of matching.</p>
       </div>
 
-      {/* Confirm sheet */}
-      <Sheet open={confirming} onClose={() => setConfirming(false)} title="Confirm booking">
-        <div className="bg-gray-50 rounded-2xl p-4 space-y-3 mb-4">
-          <Row label="Service" right={<span className="text-sm font-700 text-gray-900">{service}</span>} />
-          <Row label="When" right={<span className="text-sm font-700 text-gray-900">{when}</span>} />
-          <Row label="Route" right={<span className="text-sm font-700 text-gray-900">{route ? formatDistance(route.distanceM) : '—'}</span>} />
-          <Row label="Priority" right={<span className="text-sm font-700 text-gray-900">{priority ? 'On' : 'Off'}</span>} />
-          <div className="border-t border-gray-200" />
-          <Row label="Total" right={<span className="text-base font-800" style={{color: RED}}>TT$ {total.toFixed(2)}</span>} />
-        </div>
-        <button onClick={() => { setConfirming(false); onBack() }}
-          className="w-full py-4 rounded-full font-800 text-base text-white hover:opacity-90 transition-opacity"
-          style={{background: RED}}>
-          Confirm booking
-        </button>
+      {/* Booking flow sheet */}
+      <Sheet
+        open={stage !== 'form'}
+        onClose={() => stage === 'booked' ? onBack() : setStage('form')}
+        title={
+          stage === 'searching'
+            ? `Finding a ${service.toLowerCase()} provider…`
+            : stage === 'matched'
+              ? 'Provider found'
+              : 'Booking confirmed'
+        }
+      >
+        {stage === 'searching' && (
+          <div className="flex flex-col items-center py-6">
+            <div className="w-12 h-12 rounded-full border-4 border-red-100 border-t-[#E11D48] animate-spin mb-4"/>
+            <p className="text-sm text-gray-500 font-500 text-center">
+              Matching you with verified {service.toLowerCase()} providers within 3 km of {PKG_PICKUP.label}…
+            </p>
+          </div>
+        )}
+
+        {stage === 'matched' && (
+          <>
+            <div className="flex items-center gap-3 bg-gray-50 rounded-2xl p-4 mb-4">
+              <Avatar initials={provider.initials} className="w-14 h-14 rounded-2xl text-base" />
+              <div className="flex-1 min-w-0">
+                <p className="font-800 text-gray-900">{provider.name}</p>
+                <p className="text-xs text-gray-400 font-500 truncate">{provider.role}</p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Star filled size={12} />
+                  <span className="text-xs font-600 text-gray-600">4.91 · 1,024 jobs</span>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-sm font-800 text-gray-900">{provider.eta}</p>
+                <p className="text-[10px] text-gray-400 font-600">away</p>
+              </div>
+            </div>
+            <div className="bg-gray-50 rounded-2xl p-4 mb-4">
+              <Row label="Service" right={<span className="text-sm font-700 text-gray-900">{service}</span>} />
+              <Row label="When" right={<span className="text-sm font-700 text-gray-900">{when === 'Now' && schedule !== 'Leave now' ? schedule : when}</span>} />
+              <Row label="Route" right={<span className="text-sm font-700 text-gray-900">{route ? formatDistance(route.distanceM) : '—'}</span>} />
+              <Row label="Priority" right={<span className="text-sm font-700 text-gray-900">{priority ? 'On' : 'Off'}</span>} />
+              <div className="border-t border-gray-200" />
+              <Row label="Total" right={<span className="text-base font-800" style={{color: RED}}>TT$ {total.toFixed(2)}</span>} />
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setStage('form')} className="flex-1 py-3.5 rounded-full font-700 text-sm text-gray-600 bg-gray-100">Decline</button>
+              <button onClick={confirmBooking} className="flex-1 py-3.5 rounded-full font-700 text-sm text-white active:scale-[0.98] transition-transform" style={{background: RED}}>
+                Confirm booking
+              </button>
+            </div>
+          </>
+        )}
+
+        {stage === 'booked' && (
+          <>
+            <div className="flex flex-col items-center text-center py-2 mb-3">
+              <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mb-3">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 7" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </div>
+              <p className="font-800 text-gray-900 text-lg">{provider.name} is on the way</p>
+              <p className="text-sm text-gray-400 font-500">Arriving in {provider.eta} · {service}</p>
+            </div>
+            <div className="bg-gray-50 rounded-2xl p-4 mb-4">
+              <Row label="Service address" sub={PKG_PICKUP.label} />
+              <Row label="Destination" sub={PKG_DEST.label} />
+              <Row label="When" right={<span className="text-sm font-700 text-gray-900">{when}</span>} />
+              <Row label="Charged to" right={<span className="text-sm font-700 text-gray-900">Card ···· 4242</span>} />
+              <div className="border-t border-gray-200" />
+              <Row label="Total" right={<span className="text-base font-800" style={{color: RED}}>TT$ {total.toFixed(2)}</span>} />
+            </div>
+            <button onClick={onBack} className="w-full py-4 rounded-full font-800 text-base text-white" style={{background: RED}}>
+              Done
+            </button>
+          </>
+        )}
       </Sheet>
     </div>
   )
@@ -531,6 +737,7 @@ function VehicleGlyph({ kind }: { kind: string }) {
 }
 
 function VehicleScreen({ onNext, onBack, pickup, dest }: { onNext: () => void; onBack: () => void; pickup: Place; dest: Place | null }) {
+  const { promo, schedule, setBooking } = useCustomer()
   const [selected, setSelected] = useState('Pickuptt X')
   const [sheet, setSheet] = useState<null | 'payment' | 'details' | 'confirm'>(null)
   const [payment, setPayment] = useState('Card ···· 4242')
@@ -553,9 +760,27 @@ function VehicleScreen({ onNext, onBack, pickup, dest }: { onNext: () => void; o
   const fareX = 18 + 6 * km + 0.65 * mins
   const RATES: Record<string, number> = { 'Pickuptt X': 1, 'Pickuptt Comfort': 65 / 45, 'Pickuptt XL': 85 / 45 }
   const priceOf = (type: string) => `TT$ ${(fareX * (RATES[type] ?? 1)).toFixed(2)}`
+  const discount = promoDiscount(promo, fareX * (RATES[selected] ?? 1))
+  const payable = Math.max(0, fareX * (RATES[selected] ?? 1) - discount)
   const statsLabel = route ? `${formatDistance(route.distanceM)} · ${formatDuration(route.durationS)}` : null
+  const scheduled = schedule !== 'Leave now'
 
   const selectedVehicle = VEHICLES.find(v => v.type === selected)!
+
+  const confirmRide = () => {
+    setBooking({
+      vehicle: selected,
+      fare: Math.round(payable * 100) / 100,
+      payment,
+      distanceM: route?.distanceM ?? 0,
+      durationS: route?.durationS ?? 0,
+      pickupLabel: pickup.label,
+      destLabel: dest?.label ?? 'Piarco Airport',
+      promo,
+    })
+    setSheet(null)
+    onNext()
+  }
 
   return (
     <div className="flex flex-col bg-white relative" style={{height: 680}}>
@@ -588,8 +813,21 @@ function VehicleScreen({ onNext, onBack, pickup, dest }: { onNext: () => void; o
       <div className="relative z-10 flex-1 bg-white rounded-t-3xl -mt-6 px-5 pt-5 pb-6 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] flex flex-col">
         <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-5"/>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-800 text-gray-900 text-2xl tracking-[-0.02em]">Choose a ride</h3>
-          <button onClick={() => setSheet('details')} className="text-xs font-700 text-gray-500 hover:text-gray-900 flex items-center gap-1">
+          <div className="min-w-0">
+            <h3 className="font-800 text-gray-900 text-2xl tracking-[-0.02em]">Choose a ride</h3>
+            {scheduled && (
+              <p className="text-[11px] font-700 mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full" style={{background: '#FDE7EC', color: RED}}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M12 7.5V12l3 2m6-2.5a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>
+                Scheduled · {schedule}
+              </p>
+            )}
+            {promo && (
+              <p className="text-[11px] font-700 mt-1 ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 text-green-700">
+                {promo} applied
+              </p>
+            )}
+          </div>
+          <button onClick={() => setSheet('details')} className="text-xs font-700 text-gray-500 hover:text-gray-900 flex items-center gap-1 shrink-0">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2"/><path d="M12 11v5M12 7.5v.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
             Fare details
           </button>
@@ -622,12 +860,14 @@ function VehicleScreen({ onNext, onBack, pickup, dest }: { onNext: () => void; o
           ))}
         </div>
 
-        <div className="mt-4 pt-4 border-t border-gray-100 flex gap-3">
-          <button onClick={() => setSheet('payment')} className="px-4 rounded-2xl bg-gray-100 flex items-center justify-center py-3.5 active:scale-95 transition-transform">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" stroke="#111" strokeWidth="2" strokeLinecap="round"/></svg>
+        <div className="mt-4 pt-4 border-t border-gray-100 flex gap-3 items-center">
+          <button onClick={() => setSheet('payment')} className="h-[51px] px-3.5 rounded-2xl bg-gray-100 flex items-center gap-2 active:scale-95 transition-transform shrink-0 max-w-[44%]">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="shrink-0"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" stroke="#111" strokeWidth="2" strokeLinecap="round"/></svg>
+            <span className="text-[11px] font-700 text-gray-700 truncate">{payment}</span>
           </button>
-          <button onClick={() => setSheet('confirm')} className="flex-1 py-4 rounded-full font-700 text-[15px] text-white shadow-[0_6px_20px_rgba(0,0,0,0.22)] active:scale-[0.98] transition-transform bg-[#111]">
-            Confirm {selected}
+          <button onClick={() => setSheet('confirm')} className="flex-1 min-w-0 h-[51px] rounded-full font-700 text-[15px] text-white shadow-[0_6px_20px_rgba(0,0,0,0.22)] active:scale-[0.98] transition-transform bg-[#111] flex items-center justify-center gap-2 px-3">
+            <span className="truncate">Confirm {selected}</span>
+            <span className="font-800 shrink-0">TT$ {payable.toFixed(2)}</span>
           </button>
         </div>
       </div>
@@ -660,7 +900,11 @@ function VehicleScreen({ onNext, onBack, pickup, dest }: { onNext: () => void; o
           <Row label={`Distance · ${formatDistance(route?.distanceM ?? 3200)}`} right={<span className="text-sm font-700 text-gray-900">TT$ {(6 * km).toFixed(2)}</span>} />
           <Row label={`Time · ${formatDuration(route?.durationS ?? 720)}`} right={<span className="text-sm font-700 text-gray-900">TT$ {(0.65 * mins).toFixed(2)}</span>} />
           <Row label="Booking fee" right={<span className="text-sm font-700 text-gray-900">TT$ 0.00</span>} />
-          <Row label="Total" right={<span className="text-sm font-800 text-gray-900">{priceOf(selected)}</span>} />
+          <Row label={`${selectedVehicle.type} multiplier`} right={<span className="text-sm font-700 text-gray-900">×{(RATES[selected] ?? 1).toFixed(2)}</span>} />
+          {discount > 0 && (
+            <Row label={`Promo · ${promo}`} right={<span className="text-sm font-700 text-green-600">− TT$ {discount.toFixed(2)}</span>} />
+          )}
+          <Row label="Total" right={<span className="text-sm font-800 text-gray-900">TT$ {payable.toFixed(2)}</span>} />
         </div>
         <p className="text-xs text-gray-400 font-500 mb-4">Price may change if the route or wait time changes.</p>
         <button onClick={() => setSheet(null)} className="w-full py-3.5 rounded-full font-700 text-sm text-white bg-[#111]">Close</button>
@@ -669,14 +913,16 @@ function VehicleScreen({ onNext, onBack, pickup, dest }: { onNext: () => void; o
       {/* Confirm sheet */}
       <Sheet open={sheet === 'confirm'} onClose={() => setSheet(null)} title="Confirm your ride">
         <div className="bg-gray-50 rounded-2xl p-4 mb-4">
-          <Row label={selectedVehicle.type} sub={selectedVehicle.desc} right={<span className="text-sm font-800 text-gray-900">{selectedVehicle.price}</span>} />
+          <Row label={selectedVehicle.type} sub={selectedVehicle.desc} right={<span className="text-sm font-800 text-gray-900">TT$ {payable.toFixed(2)}</span>} />
           <Row label="Payment" sub={payment} right={<button onClick={() => setSheet('payment')} className="text-xs font-700 text-[#E11D48]">Change</button>} />
+          {scheduled && <Row label="Schedule" sub={schedule} right={<span className="text-xs font-700 text-gray-400">Pickup scheduled</span>} />}
+          {discount > 0 && <Row label={`Promo · ${promo}`} sub="Applied to this fare" right={<span className="text-sm font-700 text-green-600">− TT$ {discount.toFixed(2)}</span>} />}
           <Row label="Pickup" sub={pickup.label} />
           <Row label="Destination" sub={dest?.label ?? 'Piarco Airport'} />
         </div>
         <div className="flex gap-3">
           <button onClick={() => setSheet(null)} className="flex-1 py-3.5 rounded-full font-700 text-sm text-gray-600 bg-gray-100">Back</button>
-          <button onClick={onNext} className="flex-1 py-3.5 rounded-full font-700 text-sm text-white bg-[#111] active:scale-[0.98] transition-transform">
+          <button onClick={confirmRide} className="flex-1 py-3.5 rounded-full font-700 text-sm text-white bg-[#111] active:scale-[0.98] transition-transform">
             Book {selected}
           </button>
         </div>
@@ -685,15 +931,38 @@ function VehicleScreen({ onNext, onBack, pickup, dest }: { onNext: () => void; o
   )
 }
 
-function TrackingScreen({ onNext, onBack, pickup }: { onNext: () => void; onBack: () => void; pickup: Place }) {
+type Phase = 'enroute' | 'arrived' | 'trip'
+
+const FALLBACK_DEST: Place = {
+  id: 'trip-dest-fallback',
+  label: 'Piarco International Airport',
+  sub: 'Golden Grove Rd, Piarco',
+  lat: 10.5954,
+  lng: -61.3372,
+}
+
+function TrackingScreen({ onNext, onBack, pickup, dest }: { onNext: () => void; onBack: () => void; pickup: Place; dest: Place | null }) {
+  const { booking, setBooking } = useCustomer()
   const [sheet, setSheet] = useState<null | 'sos' | 'call' | 'chat' | 'cancel' | 'driver'>(null)
   const [messages, setMessages] = useState([
     { me: false, text: 'Hi, I’m 2 minutes away at the main entrance.' },
   ])
   const [draft, setDraft] = useState('')
   const [sosSent, setSosSent] = useState(false)
-  const [driverRoute, setDriverRoute] = useState<RouteResult | null>(null)
+  const [toast, setToast] = useState('')
+  const [phase, setPhase] = useState<Phase>('enroute')
+  const [approach, setApproach] = useState<RouteResult | null>(null)
+  const [tripRoute, setTripRoute] = useState<RouteResult | null>(null)
   const [progress, setProgress] = useState(0)
+  const finishedRef = useRef(false)
+
+  const target = dest ?? FALLBACK_DEST
+  const driverName = 'Kevin Mohammed'
+
+  const flash = (msg: string) => {
+    setToast(msg)
+    setTimeout(() => setToast(''), 1800)
+  }
 
   // Driver starts ~1.2 km out and drives to the pickup point (real OSRM route).
   const driverStart: Place = { ...pickup, id: 'driver', label: 'Driver', lat: pickup.lat + 0.011, lng: pickup.lng - 0.009 }
@@ -701,27 +970,89 @@ function TrackingScreen({ onNext, onBack, pickup }: { onNext: () => void; onBack
   useEffect(() => {
     const ctrl = new AbortController()
     fetchRoute(driverStart, pickup, ctrl.signal)
-      .then(r => setDriverRoute(r))
+      .then(r => setApproach(r))
       .catch(() => {})
     return () => ctrl.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickup])
 
-  // Advance the car along the route; full approach takes ~28s of wall time.
+  // Once the rider is in the car, fetch the real pickup → destination route.
   useEffect(() => {
-    if (!driverRoute) return
+    if (phase !== 'trip') return
+    const ctrl = new AbortController()
+    fetchRoute(pickup, target, ctrl.signal)
+      .then(r => setTripRoute(r))
+      .catch(() => {})
+    return () => ctrl.abort()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase])
+
+  // Advance the car along the active route; a leg takes ~20s of wall time.
+  useEffect(() => {
+    if (phase === 'arrived') return
+    if (phase === 'enroute' && !approach) return
+    if (phase === 'trip' && !tripRoute) return
+    const legSeconds = phase === 'enroute' ? 20 : 24
     const id = setInterval(() => {
-      setProgress(p => Math.min(0.97, p + 0.5 / 28))
+      setProgress(p => Math.min(1, p + 0.5 / legSeconds))
     }, 500)
     return () => clearInterval(id)
-  }, [driverRoute])
+  }, [phase, approach, tripRoute])
 
-  const remainingS = driverRoute ? driverRoute.durationS * (1 - progress) : null
-  const etaLabel = remainingS == null ? 'Calculating…' : `${Math.max(1, Math.ceil(remainingS / 60))} min away`
-  const remainingKm = driverRoute ? driverRoute.distanceM * (1 - progress) : null
-  const driverPos: [number, number] | null = driverRoute
-    ? pointAt(driverRoute.coords, progress)
-    : [driverStart.lat, driverStart.lng]
+  // en route → arrived (driver reaches the pickup point)
+  useEffect(() => {
+    if (phase !== 'enroute' || !approach || progress < 1) return
+    setProgress(0)
+    setPhase('arrived')
+    setMessages(m => [...m, { me: false, text: 'I’m at your pickup point now — white Toyota, TPN 7084.' }])
+    flash(`${driverName} has arrived`)
+  }, [progress, phase, approach])
+
+  const startTrip = () => {
+    if (phase !== 'arrived') return
+    setProgress(0)
+    setPhase('trip')
+    setMessages(m => [...m, { me: false, text: 'Enjoy the ride — heading to ' + target.label + '.' }])
+  }
+
+  // arrived → trip (auto after a short wait, or when the rider taps Start trip)
+  useEffect(() => {
+    if (phase !== 'arrived') return
+    const t = setTimeout(startTrip, 6000)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase])
+
+  // trip → complete when the car reaches the destination
+  useEffect(() => {
+    if (phase !== 'trip' || !tripRoute || progress < 1 || finishedRef.current) return
+    finishedRef.current = true
+    const t = setTimeout(() => onNext(), 700)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress, phase, tripRoute])
+
+  const activeRoute = phase === 'trip' ? tripRoute : approach
+  const remainingS = activeRoute ? activeRoute.durationS * (1 - progress) : null
+  const remainingKm = activeRoute ? activeRoute.distanceM * (1 - progress) : null
+  const driverPos: [number, number] | null =
+    phase === 'arrived'
+      ? [pickup.lat, pickup.lng]
+      : activeRoute
+        ? pointAt(activeRoute.coords, progress)
+        : [driverStart.lat, driverStart.lng]
+
+  const etaLabel =
+    phase === 'arrived'
+      ? 'Waiting for you'
+      : remainingS == null
+        ? 'Calculating…'
+        : `${Math.max(1, Math.ceil(remainingS / 60))} min ${phase === 'enroute' ? 'away' : 'to destination'}`
+
+  const statusLabel =
+    phase === 'enroute' ? 'Driver en route'
+      : phase === 'arrived' ? 'Driver has arrived'
+        : 'On trip'
 
   const send = () => {
     if (!draft.trim()) return
@@ -730,32 +1061,68 @@ function TrackingScreen({ onNext, onBack, pickup }: { onNext: () => void; onBack
     setTimeout(() => setMessages(m => [...m, { me: false, text: 'Got it, see you shortly!' }]), 900)
   }
 
+  // Cancellation is free early in the approach, otherwise a fee applies.
+  const cancelFee = phase === 'enroute' && progress < 0.35 ? 0 : 10
+
   return (
     <div className="flex flex-col relative" style={{height: 680}}>
       <div className="relative flex-1 isolate">
         <RideMapView
           pickup={pickup}
-          route={driverRoute?.coords ?? null}
+          dest={phase === 'trip' ? target : null}
+          route={activeRoute?.coords ?? null}
           cars={driverPos ? [driverPos] : []}
         />
         <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/10 pointer-events-none" />
-        {remainingKm != null && (
-          <div className="absolute bottom-10 left-4 z-[1100] bg-white/95 backdrop-blur-md rounded-full px-3 py-1.5 shadow-[0_2px_10px_rgba(0,0,0,0.18)] anim-fade">
-            <span className="text-[11px] font-bold text-gray-900">{formatDistance(remainingKm)} away</span>
-          </div>
-        )}
+        <div className="absolute bottom-10 left-4 z-[1100] bg-white/95 backdrop-blur-md rounded-full px-3 py-1.5 shadow-[0_2px_10px_rgba(0,0,0,0.18)] anim-fade">
+          {phase === 'arrived' ? (
+            <span className="text-[11px] font-bold text-gray-900">At pickup · {driverName.split(' ')[0]} is waiting</span>
+          ) : remainingKm != null ? (
+            <span className="text-[11px] font-bold text-gray-900">{formatDistance(remainingKm)} {phase === 'enroute' ? 'away' : 'to go'}</span>
+          ) : (
+            <span className="text-[11px] font-bold text-gray-500 animate-pulse">Locating…</span>
+          )}
+        </div>
         {/* SOS */}
         <button onClick={() => setSheet('sos')} className="absolute top-4 right-4 z-[1100] bg-[#E11D48] text-white text-xs font-800 px-4 py-2 rounded-xl shadow active:scale-95 transition-transform">SOS</button>
         <button onClick={onBack} className="absolute top-4 left-4 z-[1100] w-9 h-9 bg-white rounded-full shadow flex items-center justify-center">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="#111" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </button>
+        {toast && (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[1200] bg-gray-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg anim-fade whitespace-nowrap">
+            {toast}
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-t-[28px] -mt-8 relative z-10 px-5 pt-4 pb-4 shadow-[0_-8px_30px_rgba(0,0,0,0.12)]">
-        <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-4"/>
+        <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-3"/>
+
+        {/* Phase stepper */}
+        <div className="flex items-center justify-between mb-3 px-1">
+          {([
+            { key: 'enroute', label: 'En route' },
+            { key: 'arrived', label: 'Arrived' },
+            { key: 'trip', label: 'On trip' },
+          ] as const).map((s, i) => {
+            const order: Phase[] = ['enroute', 'arrived', 'trip']
+            const active = order.indexOf(phase) >= i
+            const current = phase === s.key
+            return (
+              <div key={s.key} className="flex items-center flex-1 last:flex-none">
+                <div className="flex items-center gap-1.5">
+                  <div className={`w-2.5 h-2.5 rounded-full transition-colors ${active ? (current ? 'animate-pulse' : '') : ''}`} style={{background: active ? RED : '#E5E7EB'}}/>
+                  <span className={`text-[10px] font-700 uppercase tracking-wider ${active ? 'text-gray-900' : 'text-gray-300'}`}>{s.label}</span>
+                </div>
+                {i < 2 && <div className="flex-1 h-px bg-gray-200 mx-2"><div className="h-full transition-all" style={{width: active && order.indexOf(phase) > i ? '100%' : '0%', background: RED}}/></div>}
+              </div>
+            )
+          })}
+        </div>
+
         <div className="flex items-center gap-2 mb-1">
-          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"/>
-          <span className="text-xs font-700 text-green-600 uppercase tracking-wider">Driver en route</span>
+          <div className={`w-2 h-2 rounded-full ${phase === 'trip' ? 'bg-[#E11D48]' : 'bg-green-500'} animate-pulse`}/>
+          <span className={`text-xs font-700 uppercase tracking-wider ${phase === 'trip' ? 'text-[#E11D48]' : 'text-green-600'}`}>{statusLabel}</span>
         </div>
         <p className="text-2xl font-800 text-gray-900 mb-3 tracking-[-0.02em]">{etaLabel}</p>
 
@@ -780,9 +1147,25 @@ function TrackingScreen({ onNext, onBack, pickup }: { onNext: () => void; onBack
         </div>
 
         <div className="flex gap-2">
-          <button onClick={onNext} className="flex-1 py-3.5 rounded-full font-700 text-sm text-white flex items-center justify-center gap-1.5 shadow-[0_6px_18px_rgba(225,29,72,0.3)]" style={{background: RED}}>
-            Trip In Progress
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          {phase === 'enroute' ? (
+            <button onClick={() => setSheet('chat')} className="flex-1 py-3.5 rounded-full font-700 text-sm text-white flex items-center justify-center gap-1.5 shadow-[0_6px_18px_rgba(225,29,72,0.3)]" style={{background: RED}}>
+              Message {driverName.split(' ')[0]}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.4 8.4 0 01-9 8.4 8.9 8.9 0 01-4-.9L3 20.5l1.5-4.4a8.4 8.4 0 01-.9-3.9 8.4 8.4 0 018.4-8.4h.5A8.4 8.4 0 0121 11v.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+          ) : (
+            <button
+              onClick={() => phase === 'arrived' ? startTrip() : onNext()}
+              className="flex-1 py-3.5 rounded-full font-700 text-sm text-white flex items-center justify-center gap-1.5 shadow-[0_6px_18px_rgba(225,29,72,0.3)] active:scale-[0.98] transition-transform"
+              style={{background: RED}}>
+              {phase === 'arrived' ? 'Start trip' : 'Complete trip'}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+          )}
+          <button
+            onClick={() => flash('Trip link copied — share it with a contact')}
+            className="px-4 py-3.5 rounded-full font-700 text-sm text-gray-500 bg-gray-100 active:scale-95 transition-transform"
+            aria-label="Share trip">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7M16 6l-4-4-4 4M12 2v14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </button>
           <button onClick={() => setSheet('cancel')} className="px-4 py-3.5 rounded-full font-700 text-sm text-gray-500 bg-gray-100">Cancel</button>
         </div>
@@ -855,7 +1238,7 @@ function TrackingScreen({ onNext, onBack, pickup }: { onNext: () => void; onBack
         <div className="flex items-center gap-4 mb-4">
           <Avatar initials="KM" className="w-16 h-16 rounded-2xl text-lg" />
           <div>
-            <p className="font-800 text-gray-900">Kevin Mohammed</p>
+            <p className="font-800 text-gray-900">{driverName}</p>
             <div className="flex items-center gap-1 mt-0.5">
               <Star filled size={13} />
               <span className="text-xs font-600 text-gray-600">4.92 · 2,841 trips</span>
@@ -865,21 +1248,25 @@ function TrackingScreen({ onNext, onBack, pickup }: { onNext: () => void; onBack
         </div>
         <div className="bg-gray-50 rounded-2xl p-4 mb-4">
           <Row label="Vehicle" sub="Pickuptt X · Black" right={<span className="text-sm font-700 text-gray-900">TPN 7084</span>} />
-          <Row label="Total paid this trip" right={<span className="text-sm font-700 text-gray-900">TT$ 45.00</span>} />
+          <Row label="Trip fare" sub={booking ? booking.payment : 'Card ···· 4242'} right={<span className="text-sm font-700 text-gray-900">TT$ {(booking?.fare ?? 45).toFixed(2)}</span>} />
         </div>
         <button onClick={() => setSheet(null)} className="w-full py-3.5 rounded-full font-700 text-sm text-white bg-[#111]">Close</button>
       </Sheet>
 
       {/* Cancel sheet */}
       <Sheet open={sheet === 'cancel'} onClose={() => setSheet(null)} title="Cancel this ride?">
-        <p className="text-sm text-gray-500 font-500 mb-4">Kevin is already on the way. A TT$ 10 cancellation fee may apply.</p>
+        <p className="text-sm text-gray-500 font-500 mb-4">
+          {cancelFee === 0
+            ? `${driverName.split(' ')[0]} is still on the way — cancelling now is free.`
+            : `${driverName.split(' ')[0]} is already on the way. A TT$ ${cancelFee} cancellation fee applies.`}
+        </p>
         <div className="bg-gray-50 rounded-2xl p-4 mb-4">
-          <Row label="Waited" right={<span className="text-sm font-700 text-gray-900">1 min 12 s</span>} />
-          <Row label="Cancellation fee" right={<span className="text-sm font-700 text-gray-900">TT$ 10.00</span>} />
+          <Row label="Status" right={<span className="text-sm font-700 text-gray-900">{statusLabel}</span>} />
+          <Row label="Cancellation fee" right={<span className={`text-sm font-700 ${cancelFee === 0 ? 'text-green-600' : 'text-gray-900'}`}>{cancelFee === 0 ? 'Free' : `TT$ ${cancelFee}.00`}</span>} />
         </div>
         <div className="flex gap-3">
           <button onClick={() => setSheet(null)} className="flex-1 py-3.5 rounded-full font-700 text-sm text-white bg-[#111]">Keep ride</button>
-          <button onClick={() => { setSheet(null); onBack() }} className="flex-1 py-3.5 rounded-full font-700 text-sm text-[#E11D48] bg-red-50">Cancel ride</button>
+          <button onClick={() => { setSheet(null); setBooking(null); onBack() }} className="flex-1 py-3.5 rounded-full font-700 text-sm text-[#E11D48] bg-red-50">Cancel ride</button>
         </div>
       </Sheet>
     </div>
@@ -887,27 +1274,59 @@ function TrackingScreen({ onNext, onBack, pickup }: { onNext: () => void; onBack
 }
 
 function CompleteScreen({ onBack }: { onBack: () => void }) {
+  const { booking, wallet, spend, addTrip, setBooking } = useCustomer()
   const [rating, setRating] = useState(5)
-  const [tip, setTip] = useState(50)
+  const [tip, setTip] = useState(5)
   const [sheet, setSheet] = useState<null | 'receipt' | 'thanks'>(null)
+  const submittedRef = useRef(false)
+
+  const fare = booking?.fare ?? 45
+  const total = Math.round((fare + tip) * 100) / 100
+  const distLabel = booking && booking.distanceM > 0 ? formatDistance(booking.distanceM) : '3.2 km'
+  const durLabel = booking && booking.durationS > 0 ? formatDuration(booking.durationS) : '15 min'
+  const destLabel = booking?.destLabel ?? 'Piarco Airport'
+  const payment = booking?.payment ?? 'Card ···· 4242'
+  const usesWallet = payment.startsWith('Wallet')
+  const walletAfter = Math.max(0, wallet - (usesWallet ? total : 0))
+
+  const submit = () => {
+    if (submittedRef.current) return
+    submittedRef.current = true
+    addTrip({
+      title: `Ride to ${shortLabel(destLabel)}`,
+      meta: `Today · ${durLabel} · ${rating}★`,
+      fare: total,
+      status: 'Completed',
+    })
+    if (usesWallet) spend(total)
+    setSheet('thanks')
+  }
+
+  const finish = () => {
+    submittedRef.current = false
+    setBooking(null)
+    setSheet(null)
+    onBack()
+  }
+
   return (
     <div className="flex flex-col p-6 relative" style={{height: 680}}>
-      <div className="flex-1 flex flex-col items-center justify-center text-center">
+      <div className="flex-1 flex flex-col items-center justify-center text-center overflow-y-auto">
         <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-4 shadow-lg" style={{background: RED}}>
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 7" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </div>
         <h2 className="text-3xl font-800 text-gray-900 mb-1">Trip Complete!</h2>
-        <p className="text-gray-400 text-sm mb-6">3.2 km · 15 min · TT$ 45.00</p>
+        <p className="text-gray-400 text-sm mb-6">{distLabel} · {durLabel} · TT$ {total.toFixed(2)}</p>
 
         <div className="w-full bg-gray-50 rounded-2xl p-4 mb-6 text-left">
           <div className="flex items-center gap-3 mb-3">
             <Avatar initials="KM" className="w-10 h-10 rounded-xl text-xs" />
             <div>
               <p className="font-700 text-gray-900 text-sm">Kevin Mohammed</p>
-              <p className="text-xs text-gray-400">Pickuptt X</p>
+              <p className="text-xs text-gray-400">{booking?.vehicle ?? 'Pickuptt X'}</p>
             </div>
             <div className="ml-auto text-right">
-              <p className="text-sm font-800 text-gray-900">TT$ 45.00</p>
+              <p className="text-sm font-800 text-gray-900">TT$ {fare.toFixed(2)}</p>
               <button onClick={() => setSheet('receipt')} className="text-[10px] text-[#E11D48] font-700 underline underline-offset-2">View receipt</button>
             </div>
           </div>
@@ -924,28 +1343,32 @@ function CompleteScreen({ onBack }: { onBack: () => void }) {
         <div className="w-full mb-4">
           <p className="text-xs font-600 text-gray-500 mb-2">Add a tip</p>
           <div className="flex gap-2">
-            {[5, 10, 15, 20].map(t => (
+            {[0, 5, 10, 20].map(t => (
               <button key={t} onClick={() => setTip(t)} className={`flex-1 py-2.5 rounded-xl text-xs font-700 transition-all ${tip === t ? 'text-white shadow-md shadow-red-200' : 'bg-gray-100 text-gray-600'}`} style={tip===t?{background:RED}:{}}>
-                TT$ {t}
+                {t === 0 ? 'No tip' : `TT$ ${t}`}
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      <button onClick={() => setSheet('thanks')} className="w-full py-4 rounded-2xl font-700 text-base text-white" style={{background: RED}}>
-        Submit Rating
+      <button onClick={submit} className="w-full py-4 rounded-2xl font-700 text-base text-white active:scale-[0.98] transition-transform" style={{background: RED}}>
+        Submit Rating · TT$ {total.toFixed(2)}
       </button>
 
       {/* Receipt sheet */}
       <Sheet open={sheet === 'receipt'} onClose={() => setSheet(null)} title="Trip receipt">
         <div className="bg-gray-50 rounded-2xl p-4 mb-4">
-          <Row label="Trip" sub="Port of Spain → Piarco Airport" />
-          <Row label="Date" sub="Oct 1, 2026 · 09:41" />
-          <Row label="Driver" sub="Kevin Mohammed · Pickuptt X" />
-          <Row label="Fare" right={<span className="text-sm font-700 text-gray-900">TT$ 45.00</span>} />
-          <Row label="Tip" right={<span className="text-sm font-700 text-gray-900">TT$ {tip}.00</span>} />
-          <Row label="Total" right={<span className="text-sm font-800 text-gray-900">TT$ {45 + tip}.00</span>} />
+          <Row label="Trip" sub={`${booking?.pickupLabel ?? 'Port of Spain'} → ${destLabel}`} />
+          <Row label="Date" sub={`${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · 09:41`} />
+          <Row label="Driver" sub={`Kevin Mohammed · ${booking?.vehicle ?? 'Pickuptt X'}`} />
+          <Row label="Distance" sub={distLabel} right={<span className="text-sm font-700 text-gray-900">{durLabel}</span>} />
+          {booking?.promo && <Row label={`Promo · ${booking.promo}`} sub="Discount included in fare" right={<span className="text-sm font-700 text-green-600">Applied</span>} />}
+          <Row label="Fare" right={<span className="text-sm font-700 text-gray-900">TT$ {fare.toFixed(2)}</span>} />
+          <Row label="Tip" right={<span className="text-sm font-700 text-gray-900">TT$ {tip.toFixed(2)}</span>} />
+          <div className="border-t border-gray-200" />
+          <Row label="Total" right={<span className="text-sm font-800 text-gray-900">TT$ {total.toFixed(2)}</span>} />
+          <Row label="Paid with" right={<span className="text-sm font-700 text-gray-900">{payment}</span>} />
         </div>
         <button onClick={() => setSheet(null)} className="w-full py-3.5 rounded-full font-700 text-sm text-white bg-[#111]">Close</button>
       </Sheet>
@@ -956,12 +1379,17 @@ function CompleteScreen({ onBack }: { onBack: () => void }) {
           <div className="flex gap-1 mb-3">
             {[1,2,3,4,5].map(s => <Star key={s} filled={s <= rating} size={26} />)}
           </div>
-          <p className="text-sm text-gray-500 font-500">You rated Kevin {rating} star{rating > 1 ? 's' : ''} and tipped TT$ {tip}. Your feedback keeps rides great for everyone.</p>
+          <p className="text-sm text-gray-500 font-500">You rated Kevin {rating} star{rating > 1 ? 's' : ''} and tipped TT$ {tip.toFixed(2)}. Your feedback keeps rides great for everyone.</p>
         </div>
         <div className="bg-gray-50 rounded-2xl p-4 mb-4">
-          <Row label="New wallet balance" right={<span className="text-sm font-800 text-gray-900">TT$ {1250 - tip}.00</span>} />
+          {usesWallet ? (
+            <Row label="Wallet charged" right={<span className="text-sm font-700 text-gray-900">− TT$ {total.toFixed(2)}</span>} />
+          ) : (
+            <Row label="Charged to" right={<span className="text-sm font-700 text-gray-900">{payment}</span>} />
+          )}
+          <Row label="New wallet balance" right={<span className="text-sm font-800 text-gray-900">TT$ {walletAfter.toLocaleString()}.00</span>} />
         </div>
-        <button onClick={onBack} className="w-full py-3.5 rounded-full font-700 text-sm text-white bg-[#111]">Done</button>
+        <button onClick={finish} className="w-full py-3.5 rounded-full font-700 text-sm text-white bg-[#111]">Done</button>
       </Sheet>
     </div>
   )
@@ -995,6 +1423,7 @@ const PKG_PICKUP: Place = { id: 'pkg-pickup', label: '12 Maraval Rd, St Clair, P
 const PKG_DEST: Place = { id: 'pkg-dest', label: '45 Southern Main Rd, Chaguanas', lat: 10.5471, lng: -61.3743 }
 
 function PackageScreen({ onBack }: { onBack: () => void }) {
+  const { addTrip } = useCustomer()
   const [mode, setMode] = useState<'parcel' | 'cargo'>('parcel')
   const [category, setCategory] = useState('food')
   const [cargoType, setCargoType] = useState('pallets')
@@ -1005,6 +1434,10 @@ function PackageScreen({ onBack }: { onBack: () => void }) {
   const [searching, setSearching] = useState(false)
   const [photoAdded, setPhotoAdded] = useState(false)
   const [route, setRoute] = useState<RouteResult | null>(null)
+  const [pickupText, setPickupText] = useState(PKG_PICKUP.label)
+  const [destText, setDestText] = useState(PKG_DEST.label)
+  const [details, setDetails] = useState('')
+  const [booked, setBooked] = useState<{ name: string; initials: string } | null>(null)
 
   useEffect(() => {
     const ctrl = new AbortController()
@@ -1017,14 +1450,33 @@ function PackageScreen({ onBack }: { onBack: () => void }) {
   const truckInfo = TRUCKS.find(t => t.key === truck)!
   const weightExtra = Math.round(weight / 50) * 25
   const helperExtra = helpers ? 180 : 0
+  const km = route ? route.distanceM / 1000 : 4.6
+  const parcelLo = Math.max(180, Math.round(150 + 20 * km))
+  const parcelHi = parcelLo + 70
   const [fareLo, fareHi] = mode === 'parcel'
-    ? [250, 320]
+    ? [parcelLo, parcelHi]
     : [truckInfo.lo + weightExtra + helperExtra, truckInfo.hi + weightExtra + helperExtra]
 
   const openAgent = () => {
     setSearching(true)
     setSheet('agent')
     setTimeout(() => setSearching(false), 1600)
+  }
+
+  const acceptAgent = () => {
+    const agent = mode === 'parcel'
+      ? { name: 'Rajesh Deo', initials: 'RD' }
+      : { name: 'Kwesi Boateng', initials: 'KB' }
+    addTrip({
+      title: mode === 'parcel'
+        ? `Package to ${shortLabel(destText)}`
+        : `${truckInfo.label} haul to ${shortLabel(destText)}`,
+      meta: `Today · ${route ? formatDuration(route.durationS) : '45 min'} · ${mode === 'parcel' ? 'Parcel' : `${weight} kg`}`,
+      fare: Math.round(((fareLo + fareHi) / 2) * 100) / 100,
+      status: 'Completed',
+    })
+    setSheet(null)
+    setBooked(agent)
   }
 
   return (
@@ -1064,12 +1516,15 @@ function PackageScreen({ onBack }: { onBack: () => void }) {
         <div className="space-y-2">
           <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
             <div className="w-2.5 h-2.5 rounded-full" style={{background: RED}}/>
-            <input className="flex-1 bg-transparent outline-none text-sm font-500 text-gray-800 placeholder-gray-300" placeholder="Pickup location" defaultValue="12 Maraval Rd, St Clair, Port of Spain"/>
+            <input value={pickupText} onChange={e => setPickupText(e.target.value)}
+              className="flex-1 bg-transparent outline-none text-sm font-500 text-gray-800 placeholder-gray-300" placeholder="Pickup location"/>
           </div>
           <div className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
             <div className="w-2.5 h-2.5 rounded-sm bg-gray-900"/>
-            <input className="flex-1 bg-transparent outline-none text-sm font-500 text-gray-800 placeholder-gray-300" placeholder="Delivery location" defaultValue="45 Southern Main Rd, Chaguanas"/>
+            <input value={destText} onChange={e => setDestText(e.target.value)}
+              className="flex-1 bg-transparent outline-none text-sm font-500 text-gray-800 placeholder-gray-300" placeholder="Delivery location"/>
           </div>
+          {!destText.trim() && <p className="text-xs text-[#E11D48] font-600 px-1">A delivery location is required.</p>}
         </div>
 
         {mode === 'parcel' ? (
@@ -1141,6 +1596,7 @@ function PackageScreen({ onBack }: { onBack: () => void }) {
         <div>
           <p className="text-xs font-700 text-gray-500 uppercase tracking-wider mb-2">{mode === 'parcel' ? 'Package Details' : 'Cargo Details'}</p>
           <textarea className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-700 outline-none resize-none placeholder-gray-300 font-500" rows={3}
+            value={details} onChange={e => setDetails(e.target.value)}
             placeholder={mode === 'parcel' ? 'Describe your package…' : 'Describe the cargo, pickup access and unloading point…'}/>
         </div>
 
@@ -1163,7 +1619,9 @@ function PackageScreen({ onBack }: { onBack: () => void }) {
       </div>
 
       <div className="px-5 pb-4">
-        <button onClick={openAgent} className="w-full py-4 rounded-full font-700 text-base text-white shadow-[0_6px_18px_rgba(225,29,72,0.3)] active:scale-[0.98] transition-transform" style={{background: RED}}>
+        <button onClick={openAgent} disabled={!destText.trim()}
+          className={`w-full py-4 rounded-full font-700 text-base text-white shadow-[0_6px_18px_rgba(225,29,72,0.3)] transition-all ${destText.trim() ? 'active:scale-[0.98]' : 'opacity-40 cursor-not-allowed'}`}
+          style={{background: RED}}>
           {mode === 'parcel' ? 'Find Courier Nearby' : 'Find Truck Nearby'}
         </button>
       </div>
@@ -1197,13 +1655,13 @@ function PackageScreen({ onBack }: { onBack: () => void }) {
         <div className="bg-gray-50 rounded-2xl p-4 mb-4">
           {mode === 'parcel' ? (
             <>
-              <Row label="Pickup → delivery · 4.6 km" right={<span className="text-sm font-700 text-gray-900">TT$ 180.00</span>} />
+              <Row label={`Pickup → delivery · ${formatDistance(route?.distanceM ?? 4600)}`} right={<span className="text-sm font-700 text-gray-900">TT$ {parcelLo - 70}.00</span>} />
               <Row label={`Handling · ${category}`} right={<span className="text-sm font-700 text-gray-900">TT$ 40.00</span>} />
               <Row label="Service fee" right={<span className="text-sm font-700 text-gray-900">TT$ 30.00</span>} />
             </>
           ) : (
             <>
-              <Row label={`${truckInfo.label} · 4.6 km haul`} right={<span className="text-sm font-700 text-gray-900">TT$ {truckInfo.lo}.00 – {truckInfo.hi}.00</span>} />
+              <Row label={`${truckInfo.label} · ${formatDistance(route?.distanceM ?? 4600)} haul`} right={<span className="text-sm font-700 text-gray-900">TT$ {truckInfo.lo}.00 – {truckInfo.hi}.00</span>} />
               <Row label={`Weight · ${weight} kg`} right={<span className="text-sm font-700 text-gray-900">TT$ {weightExtra}.00</span>} />
               {helpers && <Row label="Loaders · 2" right={<span className="text-sm font-700 text-gray-900">TT$ 180.00</span>} />}
               <Row label={`Cargo · ${cargoType}`} right={<span className="text-sm font-700 text-gray-900">TT$ 30.00</span>} />
@@ -1255,13 +1713,64 @@ function PackageScreen({ onBack }: { onBack: () => void }) {
             </div>
             <div className="flex gap-3">
               <button onClick={() => setSheet(null)} className="flex-1 py-3.5 rounded-full font-700 text-sm text-gray-600 bg-gray-100">Decline</button>
-              <button onClick={() => setSheet(null)} className="flex-1 py-3.5 rounded-full font-700 text-sm text-white bg-[#111]">
+              <button onClick={acceptAgent} className="flex-1 py-3.5 rounded-full font-700 text-sm text-white active:scale-[0.98] transition-transform" style={{background: RED}}>
                 Accept {mode === 'parcel' ? 'Rajesh' : 'Kwesi'}
               </button>
             </div>
           </>
         )}
       </Sheet>
+
+      {/* Booking confirmed overlay */}
+      {booked && (
+        <div className="absolute inset-0 z-[60] bg-white flex flex-col anim-fade">
+          <div className="px-5 pt-5 pb-3 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-green-50 text-green-600">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 7" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </div>
+            <h2 className="font-800 text-xl text-gray-900">{mode === 'parcel' ? 'Courier booked' : 'Truck booked'}</h2>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-5 pb-4 space-y-4">
+            <div className="flex items-center gap-3 bg-gray-50 rounded-2xl p-4">
+              <Avatar initials={booked.initials} className="w-14 h-14 rounded-2xl text-base" />
+              <div className="flex-1 min-w-0">
+                <p className="font-800 text-gray-900">{booked.name}</p>
+                <p className="text-xs text-gray-400 font-500">{mode === 'parcel' ? 'Bike courier · TDR 5163' : `${truckInfo.label} driver · TDT 8892`}</p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Star filled size={12} />
+                  <span className="text-xs font-600 text-gray-600">4.89 · {mode === 'parcel' ? '1,204 deliveries' : '632 hauls'}</span>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-sm font-800 text-gray-900">{mode === 'parcel' ? '4 min' : '9 min'}</p>
+                <p className="text-[10px] text-gray-400 font-600">to pickup</p>
+              </div>
+            </div>
+
+            <div className="relative h-32 rounded-2xl overflow-hidden ring-1 ring-black/5 shadow-sm isolate">
+              <RideMapView pickup={PKG_PICKUP} dest={PKG_DEST} route={route?.coords ?? null} interactive={false} zoom={11} />
+            </div>
+
+            <div className="bg-gray-50 rounded-2xl p-4">
+              <Row label="Pickup" sub={pickupText} />
+              <Row label="Delivery" sub={destText} />
+              <Row label="Category" right={<span className="text-sm font-700 text-gray-900 capitalize">{mode === 'parcel' ? category : `${cargoType} · ${weight} kg`}</span>} />
+              <Row label="Status" right={<span className="text-xs font-700 px-2 py-1 rounded-full bg-green-100 text-green-700">{searching ? 'Matching' : 'Assigned'}</span>} />
+              <Row label="Estimated fare" right={<span className="text-sm font-800 text-gray-900">TT$ {fareLo.toLocaleString()} – {fareHi.toLocaleString()}</span>} />
+            </div>
+
+            <p className="text-xs text-gray-400 font-500">{details.trim() ? `Notes: ${details.trim()}` : 'Live tracking stays on until delivery is confirmed.'}</p>
+          </div>
+
+          <div className="px-5 pb-4 flex gap-3">
+            <button onClick={() => { setBooked(null); onBack() }} className="flex-1 py-4 rounded-full font-700 text-sm text-gray-600 bg-gray-100">View in activity</button>
+            <button onClick={() => { setBooked(null); onBack() }} className="flex-1 py-4 rounded-full font-800 text-sm text-white active:scale-[0.98] transition-transform" style={{background: RED}}>
+              Done
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1279,13 +1788,22 @@ const PROFILE_MENU = [
   { key: 'terms', label: 'Terms & Privacy', sub: '', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/><path d="M14 3v5h5M9 13h6M9 17h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg> },
 ] as const
 
-function ProfileScreen({ onBack }: { onBack: () => void }) {
+function ProfileScreen({ onBack, onLogout }: { onBack: () => void; onLogout: () => void }) {
+  const {
+    profile, setProfile,
+    wallet, recharge: rechargeWallet,
+    trips, promo, setPromo,
+    notifs, setNotifs,
+    language, setLanguage,
+    corp, setCorp,
+  } = useCustomer()
   const [sheet, setSheet] = useState<null | typeof PROFILE_MENU[number]['key'] | 'edit' | 'walletcard'>(null)
-  const [notifs, setNotifs] = useState({ push: true, sms: true, email: false, promos: true })
-  const [language, setLanguage] = useState('English')
-  const [corp, setCorp] = useState(false)
-  const [name, setName] = useState('Kamal Perera')
-  const [recharge, setRecharge] = useState(500)
+  const [name, setName] = useState(profile.name)
+  const [phone, setPhone] = useState(profile.phone)
+  const [email, setEmail] = useState(profile.email)
+  const [amount, setAmount] = useState(500)
+  const [recharged, setRecharged] = useState(false)
+  const [supportTopic, setSupportTopic] = useState<string | null>(null)
 
   const menuTitle = () => {
     if (sheet === 'edit') return 'Edit profile'
@@ -1293,20 +1811,37 @@ function ProfileScreen({ onBack }: { onBack: () => void }) {
     return PROFILE_MENU.find(m => m.key === sheet)?.label ?? ''
   }
 
+  const menuSub = (key: string, fallback: string): string => {
+    switch (key) {
+      case 'history': return `${trips.length} trips`
+      case 'wallet': return `TT$ ${wallet.toLocaleString()}`
+      case 'promo': return promo ? `${promo} applied` : '2 active'
+      case 'language': return language
+      case 'corporate': return corp ? 'Business' : 'Personal'
+      case 'notifications': {
+        const on = Object.values(notifs).filter(Boolean).length
+        return on === 4 ? 'All on' : `${on} of 4 on`
+      }
+      default: return fallback
+    }
+  }
+
   const sheetBody = () => {
     switch (sheet) {
       case 'history':
         return (
           <div className="space-y-3">
-            {[
-              { t: 'Ride to Piarco Int’l', d: 'Sep 30 · 15 min', f: 'TT$ 45.00' },
-              { t: 'Package to Chaguanas', d: 'Sep 28 · 18 min', f: 'TT$ 280.00' },
-              { t: 'Ride to MovieTowne', d: 'Sep 26 · 9 min', f: 'TT$ 32.00' },
-              { t: 'Bike taxi to Savannah', d: 'Sep 21 · 7 min', f: 'TT$ 18.00' },
-            ].map(x => (
-              <div key={x.t} className="bg-gray-50 rounded-xl p-3.5">
-                <div className="flex justify-between"><p className="text-sm font-700 text-gray-900">{x.t}</p><p className="text-sm font-800 text-gray-900">{x.f}</p></div>
-                <p className="text-xs text-gray-400 font-500 mt-0.5">{x.d}</p>
+            {trips.length === 0 && <p className="text-sm text-gray-400 font-500 py-4 text-center">No trips yet.</p>}
+            {trips.map(x => (
+              <div key={x.id} className="bg-gray-50 rounded-xl p-3.5">
+                <div className="flex justify-between gap-3">
+                  <p className="text-sm font-700 text-gray-900 truncate">{x.title}</p>
+                  <p className="text-sm font-800 text-gray-900 shrink-0">TT$ {x.fare.toFixed(2)}</p>
+                </div>
+                <div className="flex justify-between items-center mt-0.5">
+                  <p className="text-xs text-gray-400 font-500">{x.meta}</p>
+                  <span className={`text-[10px] font-700 px-2 py-0.5 rounded-full ${x.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>{x.status}</span>
+                </div>
               </div>
             ))}
           </div>
@@ -1317,34 +1852,45 @@ function ProfileScreen({ onBack }: { onBack: () => void }) {
           <div>
             <div className="bg-gray-900 rounded-2xl p-5 text-white mb-4">
               <p className="text-xs text-gray-400 font-600 uppercase tracking-wider mb-1">Wallet balance</p>
-              <p className="text-3xl font-800 tracking-tight">TT$ 1,250.00</p>
+              <p className="text-3xl font-800 tracking-tight">TT$ {wallet.toLocaleString()}.00</p>
+              {recharged && <p className="text-xs font-700 text-green-400 mt-1 anim-fade">TT$ {amount.toLocaleString()} added — new balance TT$ {wallet.toLocaleString()}.00</p>}
             </div>
             <p className="text-xs font-700 text-gray-500 uppercase tracking-wider mb-2">Recharge amount</p>
             <div className="flex gap-2 mb-3">
               {[200, 500, 1000, 2000].map(a => (
-                <button key={a} onClick={() => setRecharge(a)}
-                  className={`flex-1 py-2.5 rounded-xl text-xs font-700 border-2 transition-all ${recharge === a ? 'border-[#111] bg-gray-50 text-gray-900' : 'border-gray-100 text-gray-500'}`}>
+                <button key={a} onClick={() => { setAmount(a); setRecharged(false) }}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-700 border-2 transition-all ${amount === a ? 'border-[#111] bg-gray-50 text-gray-900' : 'border-gray-100 text-gray-500'}`}>
                   TT$ {a}
                 </button>
               ))}
             </div>
-            <button onClick={() => setSheet(null)} className="w-full py-3.5 rounded-full font-700 text-sm text-white bg-[#111]">
-              Recharge TT$ {recharge}
+            <button onClick={() => { rechargeWallet(amount); setRecharged(true) }}
+              className="w-full py-3.5 rounded-full font-700 text-sm text-white bg-[#111] active:scale-[0.98] transition-transform">
+              {recharged ? 'Recharge again' : `Recharge TT$ ${amount}`}
             </button>
+            <button onClick={() => setSheet(null)} className="w-full py-3 font-700 text-sm text-gray-500 mt-1">Done</button>
           </div>
         )
       case 'promo':
         return (
           <div className="space-y-2.5">
-            {[{ c: 'WELCOME20', d: '20% off your next ride', e: 'Oct 31' }, { c: 'AIRPORT10', d: 'TT$ 10 off airport trips', e: 'Nov 15' }].map(o => (
-              <div key={o.c} className="flex items-center gap-3 p-3.5 rounded-xl border-2 border-dashed border-gray-200">
-                <div className="flex-1">
-                  <p className="font-800 text-sm text-gray-900">{o.c}</p>
-                  <p className="text-xs text-gray-500 font-500">{o.d} · exp {o.e}</p>
+            {[{ c: 'WELCOME20', d: '20% off your next ride', e: 'Oct 31' }, { c: 'AIRPORT10', d: 'TT$ 10 off airport trips', e: 'Nov 15' }].map(o => {
+              const active = promo === o.c
+              return (
+                <div key={o.c} className={`flex items-center gap-3 p-3.5 rounded-xl border-2 border-dashed ${active ? 'border-[#E11D48] bg-red-50' : 'border-gray-200'}`}>
+                  <div className="flex-1">
+                    <p className="font-800 text-sm text-gray-900">{o.c}</p>
+                    <p className="text-xs text-gray-500 font-500">{o.d} · exp {o.e}</p>
+                  </div>
+                  <button
+                    onClick={() => setPromo(active ? null : o.c)}
+                    className={`px-3.5 py-2 rounded-lg text-xs font-700 transition-colors ${active ? 'bg-gray-900 text-white' : 'bg-[#E11D48] text-white'}`}>
+                    {active ? 'Remove' : 'Apply'}
+                  </button>
                 </div>
-                <button onClick={() => setSheet(null)} className="px-3.5 py-2 rounded-lg bg-[#E11D48] text-white text-xs font-700">Apply</button>
-              </div>
-            ))}
+              )
+            })}
+            <p className="text-xs text-gray-400 font-500">Applied promos discount your fare automatically at checkout.</p>
           </div>
         )
       case 'refer':
@@ -1402,7 +1948,7 @@ function ProfileScreen({ onBack }: { onBack: () => void }) {
                   <p className="text-sm font-700 text-gray-900">{o.l}</p>
                   <p className="text-xs text-gray-400 font-500">{o.s}</p>
                 </div>
-                <Toggle on={notifs[o.k]} onChange={v => setNotifs(n => ({ ...n, [o.k]: v }))} />
+                <Toggle on={notifs[o.k]} onChange={v => setNotifs({ ...notifs, [o.k]: v })} />
               </div>
             ))}
           </div>
@@ -1427,6 +1973,57 @@ function ProfileScreen({ onBack }: { onBack: () => void }) {
           </div>
         )
       case 'support':
+        if (supportTopic) {
+          const content: Record<string, React.ReactNode> = {
+            'Chat with us': (
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                <div className="max-w-[80%] bg-gray-100 text-gray-800 px-3.5 py-2.5 rounded-2xl rounded-bl-md text-sm font-500">Hi Kamal 👋 You're chatting with Pickuptt support. How can we help?</div>
+                <div className="max-w-[80%] ml-auto bg-[#111] text-white px-3.5 py-2.5 rounded-2xl rounded-br-md text-sm font-500">Where is my refund from the cancelled ride?</div>
+                <div className="max-w-[80%] bg-gray-100 text-gray-800 px-3.5 py-2.5 rounded-2xl rounded-bl-md text-sm font-500">It was approved yesterday — it should hit your card in 3–5 business days. I've emailed you the reference.</div>
+                <p className="text-[11px] text-gray-400 font-600 text-center pt-1">Agent joined · typically replies in 2 min</p>
+              </div>
+            ),
+            'Call support': (
+              <div className="text-center py-3">
+                <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-3" style={{color: RED}}>
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M21.5 16.9v2.7a2 2 0 01-2.2 2 19.6 19.6 0 01-8.6-3.1 19.3 19.3 0 01-6-6A19.6 19.6 0 011.6 4a2 2 0 012-2.2h2.7a2 2 0 012 1.7c.1 1 .4 2 .7 2.9a2 2 0 01-.5 2.1l-1.1 1.1a16 16 0 006 6l1.1-1.1a2 2 0 012.1-.5c.9.3 1.9.6 2.9.7a2 2 0 011.7 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </div>
+                <p className="font-800 text-gray-900">+1 868 000 0000</p>
+                <p className="text-xs text-gray-400 font-500 mb-4">24/7 · average wait under 2 min</p>
+                <a href="tel:+18680000000" className="block w-full py-3.5 rounded-full font-700 text-sm text-white" style={{background: RED}}>Call now</a>
+              </div>
+            ),
+            'Report an issue': (
+              <div className="space-y-2">
+                {['Lost item', 'Fare dispute', 'Safety concern', 'Driver behaviour'].map(r => (
+                  <div key={r} className="flex items-center gap-3 p-3.5 rounded-xl bg-gray-50">
+                    <div className="flex-1"><p className="text-sm font-700 text-gray-900">{r}</p></div>
+                    <span className="text-[11px] font-700 px-2 py-1 rounded-full bg-white border border-gray-200 text-gray-500">Report</span>
+                  </div>
+                ))}
+                <p className="text-xs text-gray-400 font-500 pt-1">Reports are reviewed by our safety team within 24 hours.</p>
+              </div>
+            ),
+            'FAQ': (
+              <div className="space-y-3 text-sm text-gray-600 font-500 leading-relaxed max-h-64 overflow-y-auto pr-1">
+                <p><b className="text-gray-900">How is my fare calculated?</b><br/>Base fare + distance + time, with multipliers per vehicle class. You always see it before booking.</p>
+                <p><b className="text-gray-900">Can I schedule a ride?</b><br/>Yes — pick “Schedule” on the ride screen up to 24 hours ahead.</p>
+                <p><b className="text-gray-900">How do refunds work?</b><br/>Approved refunds return to your original payment method within 3–5 business days.</p>
+                <p><b className="text-gray-900">Is my wallet transferable?</b><br/>Wallet balance can pay any Pickuptt service and is non-transferable between accounts.</p>
+              </div>
+            ),
+          }
+          return (
+            <div>
+              <button onClick={() => setSupportTopic(null)} className="text-xs font-700 text-[#E11D48] mb-3 flex items-center gap-1">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                All support options
+              </button>
+              <p className="font-800 text-gray-900 mb-3">{supportTopic}</p>
+              {content[supportTopic]}
+            </div>
+          )
+        }
         return (
           <div className="space-y-2">
             {[
@@ -1435,7 +2032,7 @@ function ProfileScreen({ onBack }: { onBack: () => void }) {
               { l: 'Report an issue', s: 'Lost item, fare dispute, safety' },
               { l: 'FAQ', s: 'Browse common questions' },
             ].map(o => (
-              <button key={o.l} onClick={() => setSheet(null)} className="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-gray-100 hover:bg-gray-50 text-left transition-colors">
+              <button key={o.l} onClick={() => setSupportTopic(o.l)} className="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-gray-100 hover:bg-gray-50 text-left transition-colors">
                 <div className="flex-1">
                   <p className="text-sm font-700 text-gray-900">{o.l}</p>
                   <p className="text-xs text-gray-400 font-500">{o.s}</p>
@@ -1458,7 +2055,7 @@ function ProfileScreen({ onBack }: { onBack: () => void }) {
           <div className="space-y-3">
             <div className="flex justify-center mb-1">
               <div className="relative">
-                <Avatar initials="KP" className="w-20 h-20 rounded-3xl text-xl" />
+                <Avatar initials={initialsOf(name)} className="w-20 h-20 rounded-3xl text-xl" />
                 <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[#E11D48] flex items-center justify-center">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="white" strokeWidth="2.5" strokeLinecap="round"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="white" strokeWidth="2.5" strokeLinecap="round"/></svg>
                 </div>
@@ -1466,11 +2063,17 @@ function ProfileScreen({ onBack }: { onBack: () => void }) {
             </div>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name"
               className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm font-600 outline-none border-2 border-transparent focus:border-gray-300"/>
-            <input defaultValue="+1 868 555 0143" placeholder="Phone"
+            <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Phone"
               className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm font-600 outline-none border-2 border-transparent focus:border-gray-300"/>
-            <input defaultValue="kamal@example.com" placeholder="Email"
+            <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email"
               className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm font-600 outline-none border-2 border-transparent focus:border-gray-300"/>
-            <button onClick={() => setSheet(null)} className="w-full py-3.5 rounded-full font-700 text-sm text-white bg-[#111]">Save changes</button>
+            <button
+              onClick={() => {
+                if (!name.trim()) return
+                setProfile({ name: name.trim(), phone: phone.trim() || profile.phone, email: email.trim() || profile.email })
+                setSheet(null)
+              }}
+              className="w-full py-3.5 rounded-full font-700 text-sm text-white bg-[#111] active:scale-[0.98] transition-transform">Save changes</button>
           </div>
         )
       default:
@@ -1487,39 +2090,49 @@ function ProfileScreen({ onBack }: { onBack: () => void }) {
 
       <div className="px-5 mb-5">
         <button onClick={() => setSheet('edit')} className="w-full text-left flex items-center gap-4 bg-gray-50 hover:bg-gray-100 rounded-2xl p-4 transition-colors">
-          <div className="relative">
-            <Avatar initials="KP" className="w-16 h-16 rounded-2xl text-lg ring-2 ring-[#E11D48]/50" />
+          <div className="relative shrink-0">
+            <Avatar initials={initialsOf(profile.name)} className="w-16 h-16 rounded-2xl text-lg ring-2 ring-[#E11D48]/50" />
             <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center" style={{background:RED}}>
               <svg width="8" height="8" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="white" strokeWidth="2.5" strokeLinecap="round"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="white" strokeWidth="2.5" strokeLinecap="round"/></svg>
             </div>
           </div>
-          <div>
-            <p className="font-800 text-gray-900">{name}</p>
-            <p className="text-xs text-gray-400 font-500">+1 868 555 0143</p>
-            <p className="text-xs text-gray-400 font-500">kamal@example.com</p>
+          <div className="min-w-0">
+            <p className="font-800 text-gray-900 truncate">{profile.name}</p>
+            <p className="text-xs text-gray-400 font-500 truncate">{profile.phone}</p>
+            <p className="text-xs text-gray-400 font-500 truncate">{profile.email}</p>
           </div>
-          <div className="ml-auto text-right">
+          <div className="ml-auto text-right shrink-0">
             <p className="text-xs text-gray-400">Wallet</p>
-            <p className="font-800 text-sm" style={{color: RED}}>TT$ 1,250</p>
+            <p className="font-800 text-sm" style={{color: RED}}>TT$ {wallet.toLocaleString()}</p>
           </div>
         </button>
       </div>
 
       <div className="flex-1 overflow-auto px-5 space-y-2">
         {PROFILE_MENU.map(item => (
-          <button key={item.key} onClick={() => setSheet(item.key)}
+          <button key={item.key} onClick={() => { if (item.key === 'support') setSupportTopic(null); setSheet(item.key) }}
             className="group w-full flex items-center gap-3 bg-gray-50 hover:bg-red-50 rounded-xl px-4 py-3 transition-colors text-left">
             <span className="w-9 h-9 rounded-lg bg-white shadow-sm ring-1 ring-black/5 flex items-center justify-center shrink-0 text-gray-700 group-hover:text-[#E11D48] group-hover:ring-[#E11D48]/30 transition-colors">{item.icon}</span>
             <div className="flex-1">
               <p className="text-sm font-600 text-gray-800 group-hover:text-[#E11D48]">{item.label}</p>
-              {item.sub && <p className="text-xs text-gray-400">{item.sub}</p>}
+              {menuSub(item.key, item.sub) && <p className="text-xs text-gray-400">{menuSub(item.key, item.sub)}</p>}
             </div>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#ccc" strokeWidth="2" strokeLinecap="round"/></svg>
           </button>
         ))}
+
+        <button onClick={onLogout}
+          className="group w-full flex items-center gap-3 bg-gray-50 hover:bg-red-50 rounded-xl px-4 py-3 transition-colors text-left">
+          <span className="w-9 h-9 rounded-lg bg-white shadow-sm ring-1 ring-black/5 flex items-center justify-center shrink-0 text-gray-700 group-hover:text-[#E11D48] group-hover:ring-[#E11D48]/30 transition-colors">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </span>
+          <div className="flex-1">
+            <p className="text-sm font-600 text-gray-800 group-hover:text-[#E11D48]">Log out</p>
+          </div>
+        </button>
       </div>
 
-      <Sheet open={sheet !== null} onClose={() => setSheet(null)} title={menuTitle()}>
+      <Sheet open={sheet !== null} onClose={() => { setSheet(null); setSupportTopic(null) }} title={menuTitle()}>
         {sheetBody()}
       </Sheet>
     </div>
@@ -1531,32 +2144,42 @@ export default function CustomerApp() {
   const [activeService, setActiveService] = useState('Cleaning')
   const [pickup, setPickup] = useState<Place>(POS_CENTER)
   const [dest, setDest] = useState<Place | null>(null)
+  const [phone, setPhone] = useState('')
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 flex flex-col items-center py-10">
-      {/* Screen selector */}
-      <div className="flex gap-2 mb-6 flex-wrap justify-center px-4">
-        {(['splash','phone','otp','home','ride','vehicle','tracking','complete','package','profile'] as Screen[]).map(s => (
-          <button key={s} onClick={() => setScreen(s)}
-            className={`px-3 py-1 rounded-full text-xs font-600 capitalize transition-all ${screen===s?'bg-[#E11D48] text-white':'bg-white text-gray-500 hover:bg-gray-50'}`}>
-            {s}
-          </button>
-        ))}
-      </div>
+    <CustomerProvider>
+      <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 flex flex-col items-center py-10">
+        {/* Screen selector */}
+        <div className="flex gap-2 mb-6 flex-wrap justify-center px-4">
+          {(['splash','phone','otp','home','ride','vehicle','tracking','complete','package','profile','service'] as Screen[]).map(s => (
+            <button key={s} onClick={() => setScreen(s)}
+              className={`px-3 py-1 rounded-full text-xs font-600 capitalize transition-all ${screen===s?'bg-[#E11D48] text-white':'bg-white text-gray-500 hover:bg-gray-50'}`}>
+              {s}
+            </button>
+          ))}
+        </div>
 
-      <PhoneFrame>
-        {screen === 'splash' && <SplashScreen onNext={() => setScreen('phone')}/>}
-        {screen === 'phone' && <PhoneScreen onNext={() => setScreen('otp')} onBack={() => setScreen('splash')}/>}
-        {screen === 'otp' && <OTPScreen onNext={() => setScreen('home')} onBack={() => setScreen('phone')}/>}
-        {screen === 'home' && <HomeScreen onRide={() => setScreen('ride')} onPackage={() => setScreen('package')} onProfile={() => setScreen('profile')} onService={name => { setActiveService(name); setScreen('service') }}/>}
-        {screen === 'ride' && <RideScreen onNext={() => setScreen('vehicle')} onBack={() => setScreen('home')} pickup={pickup} setPickup={setPickup} dest={dest} setDest={setDest}/>}
-        {screen === 'vehicle' && <VehicleScreen onNext={() => setScreen('tracking')} onBack={() => setScreen('ride')} pickup={pickup} dest={dest}/>}
-        {screen === 'tracking' && <TrackingScreen onNext={() => setScreen('complete')} onBack={() => setScreen('vehicle')} pickup={pickup}/>}
-        {screen === 'complete' && <CompleteScreen onBack={() => setScreen('home')}/>}
-        {screen === 'package' && <PackageScreen onBack={() => setScreen('home')}/>}
-        {screen === 'profile' && <ProfileScreen onBack={() => setScreen('home')}/>}
-        {screen === 'service' && <ServiceScreen service={activeService} onBack={() => setScreen('home')}/>}
-      </PhoneFrame>
-    </div>
+        <PhoneFrame>
+          {screen === 'splash' && <SplashScreen onNext={() => setScreen('phone')}/>}
+          {screen === 'phone' && <PhoneScreen onNext={p => { setPhone(p); setScreen('otp') }} onBack={() => setScreen('splash')}/>}
+          {screen === 'otp' && <OTPScreen phone={phone} onNext={() => setScreen('home')} onBack={() => setScreen('phone')}/>}
+          {screen === 'home' && (
+            <HomeScreen
+              onRide={place => { if (place) setDest(place); setScreen('ride') }}
+              onPackage={() => setScreen('package')}
+              onProfile={() => setScreen('profile')}
+              onService={name => { setActiveService(name); setScreen('service') }}
+            />
+          )}
+          {screen === 'ride' && <RideScreen onNext={() => setScreen('vehicle')} onBack={() => setScreen('home')} pickup={pickup} setPickup={setPickup} dest={dest} setDest={setDest}/>}
+          {screen === 'vehicle' && <VehicleScreen onNext={() => setScreen('tracking')} onBack={() => setScreen('ride')} pickup={pickup} dest={dest}/>}
+          {screen === 'tracking' && <TrackingScreen onNext={() => setScreen('complete')} onBack={() => setScreen('vehicle')} pickup={pickup} dest={dest}/>}
+          {screen === 'complete' && <CompleteScreen onBack={() => setScreen('home')}/>}
+          {screen === 'package' && <PackageScreen onBack={() => setScreen('home')}/>}
+          {screen === 'profile' && <ProfileScreen onBack={() => setScreen('home')} onLogout={() => setScreen('splash')}/>}
+          {screen === 'service' && <ServiceScreen service={activeService} onBack={() => setScreen('home')}/>}
+        </PhoneFrame>
+      </div>
+    </CustomerProvider>
   )
 }
